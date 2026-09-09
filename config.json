@@ -1,4 +1,5 @@
 {
+  "ownerId": "1520158389521354805",
   "allowedRoleIds": [
     "1547161680209772544",
     "1547161717841068083",
@@ -6,5 +7,6 @@
   ],
   "allowBoosters": true,
   "allowAdministrators": true,
-  "postIntervalMinutes": 10
+  "postIntervalMinutes": 10,
+  "exchangeChannels": []
 }
