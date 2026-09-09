@@ -56,6 +56,14 @@ if (!data.users) {
 }
 
 // ==================================================
+// TEMP ROLES DATA
+// ==================================================
+
+if (!Array.isArray(data.tempRoles)) {
+  data.tempRoles = [];
+}
+
+// ==================================================
 // SAVE DATA
 // ==================================================
 
@@ -115,6 +123,21 @@ if (
 }
 
 // ==================================================
+// OWNER EXCHANGE CHANNELS
+// ==================================================
+
+const OWNER_EXCHANGE_CHANNEL_IDS = [
+  "1547162510879101028",
+  "1547162615917056092",
+  "1547162338195406909",
+  "1547162391672922132",
+  "1547162207626727434",
+  "1547162211821035611",
+  "1547162535164379146",
+  "1547162619054653491"
+];
+
+// ==================================================
 // INTERVAL
 // ==================================================
 
@@ -156,7 +179,6 @@ function getGuildSettings(
     data.guilds[guildId] = {
       exchangeChannels: []
     };
-
   }
 
   if (
@@ -168,7 +190,6 @@ function getGuildSettings(
 
     data.guilds[guildId]
       .exchangeChannels = [];
-
   }
 
   return data.guilds[guildId];
@@ -209,9 +230,7 @@ function getUserData(
       waitingSince: 0,
 
       lastPostedAt: 0
-
     };
-
   }
 
   const user =
@@ -222,6 +241,7 @@ function getUserData(
       user.attachments
     )
   ) {
+
     user.attachments = [];
   }
 
@@ -229,6 +249,7 @@ function getUserData(
     typeof user.content !==
     "string"
   ) {
+
     user.content = "";
   }
 
@@ -236,6 +257,7 @@ function getUserData(
     typeof user.active !==
     "boolean"
   ) {
+
     user.active = false;
   }
 
@@ -243,6 +265,7 @@ function getUserData(
     typeof user.waitingForPost !==
     "boolean"
   ) {
+
     user.waitingForPost = false;
   }
 
@@ -250,6 +273,7 @@ function getUserData(
     typeof user.waitingSince !==
     "number"
   ) {
+
     user.waitingSince = 0;
   }
 
@@ -257,6 +281,7 @@ function getUserData(
     typeof user.lastPostedAt !==
     "number"
   ) {
+
     user.lastPostedAt = 0;
   }
 
@@ -285,7 +310,6 @@ function resetUserExchange(
   data.users[key] = {
 
     guildId,
-
     userId,
 
     channelId: null,
@@ -301,22 +325,53 @@ function resetUserExchange(
     waitingSince: 0,
 
     lastPostedAt: 0
-
   };
 
   saveData();
 }
 
 // ==================================================
-// IS ADMIN
+// PERMISSION HELPERS
 // ==================================================
 
-function isAdminMember(
+function isBotOwner(
+  userId
+) {
+
+  return (
+    String(userId) ===
+    CONFIG_OWNER_ID
+  );
+}
+
+function hasAllowedRole(
   member
 ) {
 
   if (!member) {
     return false;
+  }
+
+  return member.roles.cache.some(
+    role =>
+      ALLOWED_ROLES.includes(
+        String(role.id)
+      )
+  );
+}
+
+function canControlSettings(
+  member
+) {
+
+  if (!member) {
+    return false;
+  }
+
+  if (
+    isBotOwner(member.id)
+  ) {
+    return true;
   }
 
   if (
@@ -327,370 +382,1149 @@ function isAdminMember(
     return true;
   }
 
-  return false;
+  return hasAllowedRole(member);
 }
 
 // ==================================================
-// IS BOT OWNER
+// DURATION PARSER
 // ==================================================
 
-async function isBotOwner(
+function parseDuration(input) {
+
+  if (!input) {
+    return null;
+  }
+
+  const value =
+    String(input)
+      .trim()
+      .toLowerCase();
+
+  const match =
+    value.match(
+      /^(\d+(?:\.\d+)?)(s|m|h|d|w)$/
+    );
+
+  if (!match) {
+    return null;
+  }
+
+  const amount =
+    Number(match[1]);
+
+  const unit =
+    match[2];
+
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    return null;
+  }
+
+  const multipliers = {
+    s: 1000,
+    m: 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000,
+    w: 7 * 24 * 60 * 60 * 1000
+  };
+
+  return amount * multipliers[unit];
+}
+
+// ==================================================
+// FORMAT DURATION
+// ==================================================
+
+function formatDuration(ms) {
+
+  if (
+    !Number.isFinite(ms) ||
+    ms <= 0
+  ) {
+    return "0s";
+  }
+
+  let remaining = ms;
+
+  const weeks =
+    Math.floor(
+      remaining /
+      (7 * 24 * 60 * 60 * 1000)
+    );
+
+  remaining -=
+    weeks *
+    (7 * 24 * 60 * 60 * 1000);
+
+  const days =
+    Math.floor(
+      remaining /
+      (24 * 60 * 60 * 1000)
+    );
+
+  remaining -=
+    days *
+    (24 * 60 * 60 * 1000);
+
+  const hours =
+    Math.floor(
+      remaining /
+      (60 * 60 * 1000)
+    );
+
+  remaining -=
+    hours *
+    (60 * 60 * 1000);
+
+  const minutes =
+    Math.floor(
+      remaining /
+      (60 * 1000)
+    );
+
+  remaining -=
+    minutes *
+    (60 * 1000);
+
+  const seconds =
+    Math.floor(
+      remaining /
+      1000
+    );
+
+  const parts = [];
+
+  if (weeks > 0) {
+    parts.push(`${weeks}w`);
+  }
+
+  if (days > 0) {
+    parts.push(`${days}d`);
+  }
+
+  if (hours > 0) {
+    parts.push(`${hours}h`);
+  }
+
+  if (minutes > 0) {
+    parts.push(`${minutes}m`);
+  }
+
+  if (
+    seconds > 0 &&
+    parts.length < 2
+  ) {
+    parts.push(`${seconds}s`);
+  }
+
+  return parts.join(" ") || "0s";
+}
+
+// ==================================================
+// REMOVE EXPIRED TEMP ROLES
+// ==================================================
+
+async function removeExpiredRoles() {
+
+  if (
+    !Array.isArray(data.tempRoles) ||
+    data.tempRoles.length === 0
+  ) {
+    return;
+  }
+
+  const now =
+    Date.now();
+
+  let changed = false;
+
+  for (
+    const record of [...data.tempRoles]
+  ) {
+
+    if (
+      !record ||
+      !record.expiresAt
+    ) {
+      continue;
+    }
+
+    if (
+      Number(record.expiresAt) > now
+    ) {
+      continue;
+    }
+
+    try {
+
+      const guild =
+        client.guilds.cache.get(
+          String(record.guildId)
+        );
+
+      if (!guild) {
+        continue;
+      }
+
+      const member =
+        await guild.members
+          .fetch(
+            String(record.userId)
+          )
+          .catch(() => null);
+
+      if (!member) {
+        continue;
+      }
+
+      const role =
+        guild.roles.cache.get(
+          String(record.roleId)
+        );
+
+      if (
+        role &&
+        member.roles.cache.has(role.id)
+      ) {
+
+        await member.roles.remove(
+          role,
+          "انتهاء مدة الرتبة المؤقتة"
+        );
+      }
+
+    } catch (error) {
+
+      console.error(
+        "Failed to remove expired role:",
+        error
+      );
+    }
+
+    data.tempRoles =
+      data.tempRoles.filter(
+        item =>
+          !(
+            String(item.guildId) ===
+              String(record.guildId) &&
+
+            String(item.userId) ===
+              String(record.userId) &&
+
+            String(item.roleId) ===
+              String(record.roleId) &&
+
+            Number(item.expiresAt) ===
+              Number(record.expiresAt)
+          )
+      );
+
+    changed = true;
+  }
+
+  if (changed) {
+    saveData();
+  }
+}
+
+// فحص الرتب المؤقتة كل 15 ثانية
+setInterval(
+  removeExpiredRoles,
+  15 * 1000
+);
+
+// ==================================================
+// PUBLISH EMBED
+// ==================================================
+
+function buildExchangeEmbed(
+  user,
+  content
+) {
+
+  const embed =
+    new EmbedBuilder()
+      .setDescription(
+        content || "بدون نص"
+      )
+      .setColor(0x2b2d31)
+      .setFooter({
+        text:
+          `Auto Exchange • ${user.username}`
+      })
+      .setTimestamp();
+
+  return embed;
+}
+
+// ==================================================
+// ATTACHMENTS
+// ==================================================
+
+function getAttachmentUrls(
+  message
+) {
+
+  return message.attachments
+    .map(
+      attachment =>
+        attachment.url
+    );
+}
+
+// ==================================================
+// CREATE PUBLISH MESSAGE
+// ==================================================
+
+async function publishUserPost(
+  guild,
   userId
 ) {
 
-  // config owner
+  const user =
+    getUserData(
+      guild.id,
+      userId
+    );
+
   if (
-    CONFIG_OWNER_ID &&
-    userId === CONFIG_OWNER_ID
+    !user.channelId
   ) {
-    return true;
+    return false;
   }
 
-  // Discord Application Owner
+  if (
+    !user.content &&
+    (!user.attachments ||
+      user.attachments.length === 0)
+  ) {
+    return false;
+  }
+
+  const channel =
+    guild.channels.cache.get(
+      user.channelId
+    );
+
+  if (
+    !channel ||
+    channel.type !==
+      ChannelType.GuildText
+  ) {
+    return false;
+  }
+
   try {
 
-    const application =
-      await client.application.fetch();
+    const embed =
+      buildExchangeEmbed(
+        await client.users.fetch(
+          userId
+        ),
+        user.content
+      );
 
-    if (
-      application.owner &&
-      application.owner.id === userId
-    ) {
+    const files =
+      Array.isArray(
+        user.attachments
+      )
+        ? user.attachments
+        : [];
+
+    await channel.send({
+      embeds: [embed],
+      files
+    });
+
+    user.lastPostedAt =
+      Date.now();
+
+    saveData();
+
+    return true;
+
+  } catch (error) {
+
+    console.error(
+      "Failed to publish post:",
+      error
+    );
+
+    return false;
+  }
+}
+// ==================================================
+// PART 2 — EXCHANGE SYSTEM
+// ==================================================
+
+// ==================================================
+// CHECK USER CAN PUBLISH
+// ==================================================
+
+function canPublishUser(
+  guildId,
+  userId
+) {
+
+  const user =
+    getUserData(
+      guildId,
+      userId
+    );
+
+  if (!user.active) {
+    return false;
+  }
+
+  if (!user.channelId) {
+    return false;
+  }
+
+  if (
+    !user.content &&
+    (!user.attachments ||
+      user.attachments.length === 0)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+// ==================================================
+// GET NEXT POST TIME
+// ==================================================
+
+function getNextPostTime(
+  guildId,
+  userId
+) {
+
+  const user =
+    getUserData(
+      guildId,
+      userId
+    );
+
+  if (!user.lastPostedAt) {
+    return Date.now();
+  }
+
+  return (
+    user.lastPostedAt +
+    getIntervalMs()
+  );
+}
+
+// ==================================================
+// AUTO PUBLISH USER
+// ==================================================
+
+async function tryAutoPublish(
+  guild,
+  userId
+) {
+
+  const user =
+    getUserData(
+      guild.id,
+      userId
+    );
+
+  if (!user.active) {
+    return false;
+  }
+
+  if (!user.waitingForPost) {
+    return false;
+  }
+
+  if (
+    !canPublishUser(
+      guild.id,
+      userId
+    )
+  ) {
+    return false;
+  }
+
+  const nextTime =
+    getNextPostTime(
+      guild.id,
+      userId
+    );
+
+  if (
+    Date.now() <
+    nextTime
+  ) {
+    return false;
+  }
+
+  if (
+    publishingUsers.has(userId)
+  ) {
+    return false;
+  }
+
+  publishingUsers.add(userId);
+
+  try {
+
+    const published =
+      await publishUserPost(
+        guild,
+        userId
+      );
+
+    if (published) {
+
+      user.waitingForPost =
+        false;
+
+      user.waitingSince = 0;
+
+      saveData();
+
       return true;
     }
 
   } catch (error) {
 
-    console.log(
-      "Could not fetch application owner."
+    console.error(
+      "Auto publish error:",
+      error
     );
 
+  } finally {
+
+    publishingUsers.delete(
+      userId
+    );
   }
 
   return false;
 }
 
 // ==================================================
-// CAN USE AUTO
+// AUTO PUBLISH LOOP
 // ==================================================
 
-async function canUseAuto(
-  member
-) {
+async function runAutoPublishLoop() {
 
-  if (!member) {
-    return false;
-  }
-
-  // Owner
-  if (
-    await isBotOwner(member.id)
-  ) {
-    return true;
-  }
-
-  // Administrator
-  if (
-    config.allowAdministrators === true &&
-    isAdminMember(member)
-  ) {
-    return true;
-  }
-
-  // Allowed roles
-  if (
-    ALLOWED_ROLES.some(
-      roleId =>
-        member.roles.cache.has(
-          roleId
-        )
-    )
-  ) {
-    return true;
-  }
-
-  // Boosters
-  if (
-    config.allowBoosters === true
+  for (
+    const guild of client.guilds.cache.values()
   ) {
 
-    const boosts =
-      Number(
-        member.guild
-          .premiumSubscriptionCount || 0
-      );
+    const guildUsers =
+      Object.values(data.users)
+        .filter(
+          user =>
+            String(user.guildId) ===
+            String(guild.id)
+        );
 
-    if (boosts >= 2) {
-      return true;
+    for (
+      const user of guildUsers
+    ) {
+
+      if (
+        !user.active ||
+        !user.waitingForPost
+      ) {
+        continue;
+      }
+
+      try {
+
+        await tryAutoPublish(
+          guild,
+          user.userId
+        );
+
+      } catch (error) {
+
+        console.error(
+          "Auto publish loop error:",
+          error
+        );
+      }
     }
-
   }
-
-  return false;
 }
 
+// فحص النشر التلقائي كل 10 ثواني
+setInterval(
+  runAutoPublishLoop,
+  10 * 1000
+);
+
 // ==================================================
-// CAN CONTROL SETTINGS
+// REGISTER EXCHANGE CHANNEL
 // ==================================================
 
-async function canControlSettings(
-  member
+function addExchangeChannel(
+  guildId,
+  channelId
 ) {
 
-  if (!member) {
-    return false;
-  }
+  const settings =
+    getGuildSettings(
+      guildId
+    );
 
   if (
-    await isBotOwner(member.id)
+    !settings.exchangeChannels.includes(
+      String(channelId)
+    )
+  ) {
+
+    settings.exchangeChannels.push(
+      String(channelId)
+    );
+
+    saveData();
+  }
+}
+
+// ==================================================
+// REMOVE EXCHANGE CHANNEL
+// ==================================================
+
+function removeExchangeChannel(
+  guildId,
+  channelId
+) {
+
+  const settings =
+    getGuildSettings(
+      guildId
+    );
+
+  settings.exchangeChannels =
+    settings.exchangeChannels.filter(
+      id =>
+        String(id) !==
+        String(channelId)
+    );
+
+  saveData();
+}
+
+// ==================================================
+// CHECK EXCHANGE CHANNEL
+// ==================================================
+
+function isExchangeChannel(
+  guildId,
+  channelId
+) {
+
+  // القنوات الثابتة الخاصة بالمالك
+  if (
+    OWNER_EXCHANGE_CHANNEL_IDS.includes(
+      String(channelId)
+    )
   ) {
     return true;
   }
 
+  const settings =
+    getGuildSettings(
+      guildId
+    );
+
+  return settings.exchangeChannels.includes(
+    String(channelId)
+  );
+}
+
+// ==================================================
+// CREATE USER EXCHANGE DATA
+// ==================================================
+
+function activateUserExchange(
+  guildId,
+  userId,
+  channelId
+) {
+
+  const user =
+    getUserData(
+      guildId,
+      userId
+    );
+
+  user.channelId =
+    String(channelId);
+
+  user.active = true;
+
+  user.waitingForPost = false;
+
+  user.waitingSince = 0;
+
+  saveData();
+
+  return user;
+}
+
+// ==================================================
+// DEACTIVATE USER EXCHANGE
+// ==================================================
+
+function deactivateUserExchange(
+  guildId,
+  userId
+) {
+
+  const user =
+    getUserData(
+      guildId,
+      userId
+    );
+
+  user.active = false;
+
+  user.waitingForPost = false;
+
+  user.waitingSince = 0;
+
+  saveData();
+
+  return user;
+}
+
+// ==================================================
+// SET USER POST CONTENT
+// ==================================================
+
+function setUserContent(
+  guildId,
+  userId,
+  content
+) {
+
+  const user =
+    getUserData(
+      guildId,
+      userId
+    );
+
+  user.content =
+    String(content || "").trim();
+
+  saveData();
+
+  return user;
+}
+
+// ==================================================
+// SET USER ATTACHMENTS
+// ==================================================
+
+function setUserAttachments(
+  guildId,
+  userId,
+  attachments
+) {
+
+  const user =
+    getUserData(
+      guildId,
+      userId
+    );
+
+  user.attachments =
+    Array.isArray(attachments)
+      ? attachments
+      : [];
+
+  saveData();
+
+  return user;
+}
+
+// ==================================================
+// ADD ATTACHMENTS
+// ==================================================
+
+function addUserAttachments(
+  guildId,
+  userId,
+  attachments
+) {
+
+  const user =
+    getUserData(
+      guildId,
+      userId
+    );
+
   if (
-    isAdminMember(member)
+    !Array.isArray(
+      user.attachments
+    )
   ) {
-    return true;
+    user.attachments = [];
   }
 
-  return false;
+  if (
+    Array.isArray(attachments)
+  ) {
+
+    user.attachments.push(
+      ...attachments
+    );
+  }
+
+  saveData();
+
+  return user;
 }
 
 // ==================================================
-// PANEL EMBED
+// MARK USER WAITING
 // ==================================================
 
-function createPanelEmbed() {
+function markUserWaiting(
+  guildId,
+  userId
+) {
 
-  return new EmbedBuilder()
-
-    .setTitle(
-      "🔄 Auto Exchange"
-    )
-
-    .setDescription(
-
-      "استخدم الأزرار الموجودة بالأسفل.\n\n" +
-
-      "🚀 **إنشاء منشور**\n" +
-      "ابدأ تبادل تلقائي جديد.\n\n" +
-
-      "🛑 **إيقاف المنشور**\n" +
-      "إيقاف التبادل الخاص بك.\n\n" +
-
-      "📊 **حالة التبادل**\n" +
-      "عرض حالة التبادل الحالية.\n\n" +
-
-      `⏱️ **مدة إعادة النشر:** ${postIntervalMinutes} دقيقة`
-
-    )
-
-    .setColor(0x5865F2);
-
-}
-
-// ==================================================
-// NORMAL PANEL BUTTONS
-// ==================================================
-
-function createNormalButtons() {
-
-  return new ActionRowBuilder()
-    .addComponents(
-
-      new ButtonBuilder()
-        .setCustomId(
-          "exchange_start"
-        )
-        .setLabel(
-          "إنشاء منشور"
-        )
-        .setEmoji("📝")
-        .setStyle(
-          ButtonStyle.Success
-        ),
-
-      new ButtonBuilder()
-        .setCustomId(
-          "exchange_stop"
-        )
-        .setLabel(
-          "إيقاف المنشور"
-        )
-        .setEmoji("🛑")
-        .setStyle(
-          ButtonStyle.Danger
-        ),
-
-      new ButtonBuilder()
-        .setCustomId(
-          "exchange_status"
-        )
-        .setLabel(
-          "حالة التبادل"
-        )
-        .setEmoji("📊")
-        .setStyle(
-          ButtonStyle.Primary
-        )
-
+  const user =
+    getUserData(
+      guildId,
+      userId
     );
 
+  user.waitingForPost =
+    true;
+
+  user.waitingSince =
+    Date.now();
+
+  saveData();
+
+  return user;
 }
 
 // ==================================================
-// ADMIN PANEL BUTTONS
+// CLEAR USER POST
 // ==================================================
 
-function createAdminButtons() {
+function clearUserPost(
+  guildId,
+  userId
+) {
 
-  return new ActionRowBuilder()
-    .addComponents(
-
-      new ButtonBuilder()
-        .setCustomId(
-          "exchange_start"
-        )
-        .setLabel(
-          "إنشاء منشور"
-        )
-        .setEmoji("📝")
-        .setStyle(
-          ButtonStyle.Success
-        ),
-
-      new ButtonBuilder()
-        .setCustomId(
-          "exchange_stop"
-        )
-        .setLabel(
-          "إيقاف المنشور"
-        )
-        .setEmoji("🛑")
-        .setStyle(
-          ButtonStyle.Danger
-        ),
-
-      new ButtonBuilder()
-        .setCustomId(
-          "exchange_status"
-        )
-        .setLabel(
-          "الحالة"
-        )
-        .setEmoji("📊")
-        .setStyle(
-          ButtonStyle.Primary
-        )
-
+  const user =
+    getUserData(
+      guildId,
+      userId
     );
 
+  user.content = "";
+
+  user.attachments = [];
+
+  user.waitingForPost = false;
+
+  user.waitingSince = 0;
+
+  saveData();
+
+  return user;
 }
 
 // ==================================================
-// ADMIN TIME BUTTONS
+// GET USER POST STATUS
 // ==================================================
 
-function createAdminTimeButtons() {
+function getUserPostStatus(
+  guildId,
+  userId
+) {
 
-  return new ActionRowBuilder()
-    .addComponents(
-
-      new ButtonBuilder()
-        .setCustomId(
-          "time_decrease"
-        )
-        .setLabel(
-          "تقليل المدة"
-        )
-        .setEmoji("➖")
-        .setStyle(
-          ButtonStyle.Secondary
-        ),
-
-      new ButtonBuilder()
-        .setCustomId(
-          "time_increase"
-        )
-        .setLabel(
-          "زيادة المدة"
-        )
-        .setEmoji("➕")
-        .setStyle(
-          ButtonStyle.Secondary
-        ),
-
-      new ButtonBuilder()
-        .setCustomId(
-          "time_set"
-        )
-        .setLabel(
-          "تحديد المدة"
-        )
-        .setEmoji("⏱️")
-        .setStyle(
-          ButtonStyle.Primary
-        )
-
+  const user =
+    getUserData(
+      guildId,
+      userId
     );
 
-}
+  const nextTime =
+    getNextPostTime(
+      guildId,
+      userId
+    );
 
-// ==================================================
-// FULL PANEL
-// ==================================================
-
-function createFullPanel() {
+  const remaining =
+    Math.max(
+      0,
+      nextTime - Date.now()
+    );
 
   return {
 
-    embeds: [
-      createPanelEmbed()
-    ],
+    active:
+      user.active,
 
-    components: [
+    waitingForPost:
+      user.waitingForPost,
 
-      createNormalButtons(),
+    channelId:
+      user.channelId,
 
-      createAdminTimeButtons()
+    hasContent:
+      Boolean(
+        user.content
+      ),
 
-    ]
+    attachments:
+      user.attachments.length,
 
+    lastPostedAt:
+      user.lastPostedAt,
+
+    nextPostAt:
+      nextTime,
+
+    remainingMs:
+      remaining
   };
-
 }
 
 // ==================================================
-// SLASH COMMANDS
+// FORMAT USER STATUS
 // ==================================================
 
-const commands = [
+function buildUserStatusText(
+  guildId,
+  userId
+) {
 
-  {
-    name: "auto",
-    description:
-      "فتح لوحة Auto Exchange"
-  },
+  const status =
+    getUserPostStatus(
+      guildId,
+      userId
+    );
 
-  {
-    name: "auto-panel",
-    description:
-      "إرسال لوحة Auto Exchange"
-  },
+  if (!status.active) {
 
-  {
-    name: "auto-setup",
-    description:
-      "اختيار رومات التبادل"
-  },
-
-  {
-    name: "auto-time",
-    description:
-      "تحديد مدة إعادة النشر"
+    return (
+      "❌ نظام التبادل غير مفعل."
+    );
   }
 
-];
+  if (!status.channelId) {
+
+    return (
+      "❌ لم يتم تحديد قناة التبادل."
+    );
+  }
+
+  if (
+    !status.hasContent &&
+    status.attachments === 0
+  ) {
+
+    return (
+      "⚠️ لم تقم بإضافة محتوى للنشر."
+    );
+  }
+
+  if (
+    status.waitingForPost
+  ) {
+
+    if (
+      status.remainingMs > 0
+    ) {
+
+      return (
+        `⏳ في الانتظار للنشر.\n` +
+        `النشر القادم بعد: ${formatDuration(
+          status.remainingMs
+        )}`
+      );
+    }
+
+    return (
+      "🟢 جاهز للنشر الآن."
+    );
+  }
+
+  return (
+    "📝 المحتوى جاهز."
+  );
+}
+
+// ==================================================
+// OWNER CHANNELS SETUP
+// ==================================================
+
+function setupOwnerExchangeChannels() {
+
+  for (
+    const guild of client.guilds.cache.values()
+  ) {
+
+    for (
+      const channelId of OWNER_EXCHANGE_CHANNEL_IDS
+    ) {
+
+      const channel =
+        guild.channels.cache.get(
+          String(channelId)
+        );
+
+      if (!channel) {
+        continue;
+      }
+
+      if (
+        channel.type !==
+        ChannelType.GuildText
+      ) {
+        continue;
+      }
+
+      addExchangeChannel(
+        guild.id,
+        channel.id
+      );
+    }
+  }
+}
+
+// ==================================================
+// MESSAGE COLLECTION
+// ==================================================
+
+client.on(
+  "messageCreate",
+  async message => {
+
+    if (
+      message.author.bot
+    ) {
+      return;
+    }
+
+    if (
+      !message.guild
+    ) {
+      return;
+    }
+
+    const guild =
+      message.guild;
+
+    const channel =
+      message.channel;
+
+    // ==============================================
+    // ONLY EXCHANGE CHANNELS
+    // ==============================================
+
+    if (
+      !isExchangeChannel(
+        guild.id,
+        channel.id
+      )
+    ) {
+      return;
+    }
+
+    // ==============================================
+    // USER DATA
+    // ==============================================
+
+    const user =
+      getUserData(
+        guild.id,
+        message.author.id
+      );
+
+    // ==============================================
+    // SAVE MESSAGE CONTENT
+    // ==============================================
+
+    const content =
+      String(
+        message.content || ""
+      ).trim();
+
+    const attachments =
+      getAttachmentUrls(
+        message
+      );
+
+    // ==============================================
+    // SAVE CONTENT
+    // ==============================================
+
+    if (content) {
+
+      user.content =
+        content;
+    }
+
+    // ==============================================
+    // SAVE ATTACHMENTS
+    // ==============================================
+
+    if (
+      attachments.length > 0
+    ) {
+
+      user.attachments =
+        attachments;
+    }
+
+    // ==============================================
+    // ACTIVATE USER
+    // ==============================================
+
+    user.active = true;
+
+    user.channelId =
+      channel.id;
+
+    // ==============================================
+    // WAIT FOR POST
+    // ==============================================
+
+    user.waitingForPost =
+      true;
+
+    user.waitingSince =
+      Date.now();
+
+    saveData();
+
+    // ==============================================
+    // TRY IMMEDIATE PUBLISH
+    // ==============================================
+
+    try {
+
+      await tryAutoPublish(
+        guild,
+        message.author.id
+      );
+
+    } catch (error) {
+
+      console.error(
+        "Immediate publish error:",
+        error
+      );
+    }
+  }
+);
 
 // ==================================================
 // READY
@@ -701,1804 +1535,25 @@ client.once(
   async () => {
 
     console.log(
-      "================================"
-    );
-
-    console.log(
       `Logged in as ${client.user.tag}`
     );
 
     console.log(
-      `Bot ID: ${client.user.id}`
+      `Exchange interval: ${postIntervalMinutes} minutes`
     );
 
-    console.log(
-      `Current interval: ${postIntervalMinutes} minutes`
-    );
+    setupOwnerExchangeChannels();
 
-    console.log(
-      "================================"
-    );
+    await removeExpiredRoles();
 
-    try {
-
-      const rest =
-        new REST({
-          version: "10"
-        })
-          .setToken(
-            process.env.TOKEN
-          );
-
-      await rest.put(
-
-        Routes.applicationCommands(
-          client.user.id
-        ),
-
-        {
-          body: commands
-        }
-
-      );
-
-      console.log(
-        "Slash commands registered."
-      );
-
-    } catch (error) {
-
-      console.error(
-        "Command registration error:",
-        error
-      );
-
-    }
-
-    console.log(
-      "Auto Exchange is ONLINE."
-    );
-
+    await runAutoPublishLoop();
   }
 );
-
-// ==================================================
-// INTERACTION CREATE
-// ==================================================
-
-client.on(
-  "interactionCreate",
-  async interaction => {
-
-    try {
-
-      // ==================================================
-      // SLASH COMMANDS
-      // ==================================================
-
-      if (
-        interaction.isChatInputCommand()
-      ) {
-
-        // ==================================================
-        // /auto
-        // ==================================================
-
-        if (
-          interaction.commandName ===
-          "auto"
-        ) {
-
-          const allowed =
-            await canUseAuto(
-              interaction.member
-            );
-
-          if (!allowed) {
-
-            return interaction.reply({
-
-              content:
-                "❌ ليس لديك صلاحية استخدام Auto Exchange.",
-
-              ephemeral: true
-
-            });
-
-          }
-
-          return interaction.reply({
-
-            ...createFullPanel(),
-
-            ephemeral: true
-
-          });
-
-        }
-
-        // ==================================================
-        // /auto-panel
-        // ==================================================
-
-        if (
-          interaction.commandName ===
-          "auto-panel"
-        ) {
-
-          const allowed =
-            await canUseAuto(
-              interaction.member
-            );
-
-          if (!allowed) {
-
-            return interaction.reply({
-
-              content:
-                "❌ ليس لديك صلاحية.",
-
-              ephemeral: true
-
-            });
-
-          }
-
-          await interaction.channel.send(
-            createFullPanel()
-          );
-
-          return interaction.reply({
-
-            content:
-              "✅ تم إرسال لوحة Auto Exchange.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        // ==================================================
-        // /auto-setup
-        // ==================================================
-
-        if (
-          interaction.commandName ===
-          "auto-setup"
-        ) {
-
-          const allowed =
-            await canControlSettings(
-              interaction.member
-            );
-
-          if (!allowed) {
-
-            return interaction.reply({
-
-              content:
-                "❌ هذا الأمر للأدمن والـOwner فقط.",
-
-              ephemeral: true
-
-            });
-
-          }
-
-          const channels =
-            interaction.guild.channels.cache
-
-              .filter(
-                channel =>
-                  channel.type ===
-                  ChannelType.GuildText
-              )
-
-              .sort(
-                (a, b) =>
-                  a.position -
-                  b.position
-              );
-
-          if (
-            channels.size === 0
-          ) {
-
-            return interaction.reply({
-
-              content:
-                "❌ لا توجد رومات نصية.",
-
-              ephemeral: true
-
-            });
-
-          }
-
-          const options =
-            channels
-
-              .map(
-                channel => ({
-
-                  label:
-                    channel.name
-                      .slice(0, 100),
-
-                  value:
-                    channel.id,
-
-                  description:
-                    `اختيار #${channel.name}`
-                      .slice(0, 100)
-
-                })
-              )
-
-              .slice(0, 25);
-
-          const menu =
-            new StringSelectMenuBuilder()
-
-              .setCustomId(
-                "owner_exchange_channels"
-              )
-
-              .setPlaceholder(
-                "اختر رومات التبادل"
-              )
-
-              .setMinValues(1)
-
-              .setMaxValues(
-                options.length
-              )
-
-              .addOptions(
-                options
-              );
-
-          const row =
-            new ActionRowBuilder()
-              .addComponents(
-                menu
-              );
-
-          const settings =
-            getGuildSettings(
-              interaction.guild.id
-            );
-
-          let current =
-            "لا توجد رومات محفوظة.";
-
-          if (
-            settings.exchangeChannels
-              .length > 0
-          ) {
-
-            current =
-              settings.exchangeChannels
-                .map(
-                  id =>
-                    `<#${id}>`
-                )
-                .join("\n");
-
-          }
-
-          const embed =
-            new EmbedBuilder()
-
-              .setTitle(
-                "⚙️ Auto Exchange Setup"
-              )
-
-              .setDescription(
-
-                "اختار الرومات من القائمة فقط.\n" +
-                "مفيش أي كتابة مطلوبة.\n\n" +
-
-                "الرومات الحالية:\n" +
-                current
-
-              )
-
-              .setColor(
-                0x5865F2
-              );
-
-          return interaction.reply({
-
-            embeds: [
-              embed
-            ],
-
-            components: [
-              row
-            ],
-
-            ephemeral: true
-
-          });
-
-        }
-
-        // ==================================================
-        // /auto-time
-        // ==================================================
-
-        if (
-          interaction.commandName ===
-          "auto-time"
-        ) {
-
-          const allowed =
-            await canControlSettings(
-              interaction.member
-            );
-
-          if (!allowed) {
-
-            return interaction.reply({
-
-              content:
-                "❌ الأدمن والـOwner فقط يمكنهم تغيير المدة.",
-
-              ephemeral: true
-
-            });
-
-          }
-
-          const minutes =
-            interaction.options.getInteger(
-              "minutes"
-            );
-
-          // الأمر لن يحتوي option تلقائياً،
-          // لذلك نفتح Modal بدلاً منه.
-          const modal =
-            new ModalBuilder()
-
-              .setCustomId(
-                "set_time_modal"
-              )
-
-              .setTitle(
-                "تحديد مدة إعادة النشر"
-              );
-
-          const input =
-            new TextInputBuilder()
-
-              .setCustomId(
-                "time_input"
-              )
-
-              .setLabel(
-                "اكتب المدة بالدقائق"
-              )
-
-              .setPlaceholder(
-                "مثال: 5"
-              )
-
-              .setStyle(
-                TextInputStyle.Short
-              )
-
-              .setRequired(true)
-
-              .setMinLength(1)
-
-              .setMaxLength(5);
-
-          const row =
-            new ActionRowBuilder()
-              .addComponents(
-                input
-              );
-
-          modal.addComponents(
-            row
-          );
-
-          return interaction.showModal(
-            modal
-          );
-
-        }
-
-        return;
-
-      }
-
-      // ==================================================
-      // CHANNEL SELECT
-      // ==================================================
-
-      if (
-        interaction.isStringSelectMenu() &&
-        interaction.customId ===
-          "owner_exchange_channels"
-      ) {
-
-        const allowed =
-          await canControlSettings(
-            interaction.member
-          );
-
-        if (!allowed) {
-
-          return interaction.reply({
-
-            content:
-              "❌ لا يمكنك تعديل إعدادات الرومات.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        const settings =
-          getGuildSettings(
-            interaction.guild.id
-          );
-
-        settings.exchangeChannels =
-          [...interaction.values];
-
-        saveData();
-
-        const text =
-          interaction.values
-            .map(
-              id =>
-                `<#${id}>`
-            )
-            .join("\n");
-
-        return interaction.update({
-
-          embeds: [
-
-            new EmbedBuilder()
-
-              .setTitle(
-                "✅ تم حفظ الرومات"
-              )
-
-              .setDescription(
-                "الرومات التي تم اختيارها:\n\n" +
-                text
-              )
-
-              .setColor(
-                0x57F287
-              )
-
-          ],
-
-          components: []
-
-        });
-
-      }
-
-      // ==================================================
-      // START EXCHANGE
-      // ==================================================
-
-      if (
-        interaction.isButton() &&
-        interaction.customId ===
-          "exchange_start"
-      ) {
-
-        const allowed =
-          await canUseAuto(
-            interaction.member
-          );
-
-        if (!allowed) {
-
-          return interaction.reply({
-
-            content:
-              "❌ ليس لديك صلاحية استخدام Auto Exchange.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        const settings =
-          getGuildSettings(
-            interaction.guild.id
-          );
-
-        if (
-          settings.exchangeChannels
-            .length === 0
-        ) {
-
-          return interaction.reply({
-
-            content:
-              "❌ لم يتم تحديد رومات التبادل بعد.\nاستخدم `/auto-setup` أولاً.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        const validChannels =
-          settings.exchangeChannels
-
-            .map(
-              id =>
-                interaction.guild
-                  .channels.cache.get(id)
-            )
-
-            .filter(
-              channel =>
-                channel &&
-                channel.type ===
-                  ChannelType.GuildText
-            );
-
-        if (
-          validChannels.length === 0
-        ) {
-
-          return interaction.reply({
-
-            content:
-              "❌ الرومات المحددة غير موجودة.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        const options =
-          validChannels
-            .slice(0, 25)
-            .map(
-              channel => ({
-
-                label:
-                  channel.name
-                    .slice(0, 100),
-
-                value:
-                  channel.id,
-
-                description:
-                  `النشر في #${channel.name}`
-                    .slice(0, 100)
-
-              })
-            );
-
-        const menu =
-          new StringSelectMenuBuilder()
-
-            .setCustomId(
-              "member_exchange_channel"
-            )
-
-            .setPlaceholder(
-              "📂 اختر مكان المنشور"
-            )
-
-            .setMinValues(1)
-
-            .setMaxValues(1)
-
-            .addOptions(
-              options
-            );
-
-        const row =
-          new ActionRowBuilder()
-            .addComponents(
-              menu
-            );
-
-        return interaction.reply({
-
-          content:
-            "📝 **إنشاء منشور**\n\n" +
-            "اختار مكان المنشور من القائمة:",
-
-          components: [
-            row
-          ],
-
-          ephemeral: true
-
-        });
-
-      }
-
-      // ==================================================
-      // MEMBER CHANNEL SELECT
-      // ==================================================
-
-      if (
-        interaction.isStringSelectMenu() &&
-        interaction.customId ===
-          "member_exchange_channel"
-      ) {
-
-        const allowed =
-          await canUseAuto(
-            interaction.member
-          );
-
-        if (!allowed) {
-
-          return interaction.update({
-
-            content:
-              "❌ ليس لديك صلاحية.",
-
-            components: []
-
-          });
-
-        }
-
-        const settings =
-          getGuildSettings(
-            interaction.guild.id
-          );
-
-        const channelId =
-          interaction.values[0];
-
-        if (
-          !settings.exchangeChannels
-            .includes(channelId)
-        ) {
-
-          return interaction.update({
-
-            content:
-              "❌ هذه الروم غير مسموح بها.",
-
-            components: []
-
-          });
-
-        }
-
-        const userData =
-          getUserData(
-            interaction.guild.id,
-            interaction.user.id
-          );
-
-        userData.channelId =
-          channelId;
-
-        userData.waitingForPost =
-          true;
-
-        userData.waitingSince =
-          Date.now();
-
-        userData.active =
-          false;
-
-        userData.content =
-          "";
-
-        userData.attachments =
-          [];
-
-        userData.lastPostedAt =
-          0;
-
-        saveData();
-
-        // ==================================================
-        // SEND DM
-        // ==================================================
-
-        try {
-
-          await interaction.user.send(
-
-            "📝 **إنشاء منشور جديد**\n\n" +
-
-            "تم اختيار مكان المنشور بنجاح.\n\n" +
-
-            "📩 أرسل الآن المنشور هنا في الخاص.\n\n" +
-
-            "يمكنك إرسال:\n" +
-
-            "• نص\n" +
-            "• صورة\n" +
-            "• فيديو\n" +
-            "• ملف\n" +
-            "• نص + صورة\n\n" +
-
-            "وسيتم نشره تلقائياً."
-
-          );
-
-        } catch (error) {
-
-          resetUserExchange(
-            interaction.guild.id,
-            interaction.user.id
-          );
-
-          return interaction.update({
-
-            content:
-              "❌ لا أستطيع إرسال رسالة خاصة لك.\n" +
-              "افتح الـDMs وحاول مرة أخرى.",
-
-            components: []
-
-          });
-
-        }
-
-        return interaction.update({
-
-          content:
-            "✅ تم اختيار المكان.\n\n" +
-            "📩 راجع الخاص وأرسل المنشور هناك.",
-
-          components: []
-
-        });
-
-      }
-
-      // ==================================================
-      // STOP
-      // ==================================================
-
-      if (
-        interaction.isButton() &&
-        interaction.customId ===
-          "exchange_stop"
-      ) {
-
-        const allowed =
-          await canUseAuto(
-            interaction.member
-          );
-
-        if (!allowed) {
-
-          return interaction.reply({
-
-            content:
-              "❌ ليس لديك صلاحية.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        const userData =
-          getUserData(
-            interaction.guild.id,
-            interaction.user.id
-          );
-
-        if (
-          !userData.active &&
-          !userData.waitingForPost
-        ) {
-
-          return interaction.reply({
-
-            content:
-              "ℹ️ لا يوجد منشور نشط لديك.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        resetUserExchange(
-          interaction.guild.id,
-          interaction.user.id
-        );
-
-        return interaction.reply({
-
-          content:
-            "🛑 تم إيقاف التبادل الخاص بك.",
-
-          ephemeral: true
-
-        });
-
-      }
-
-      // ==================================================
-      // STATUS
-      // ==================================================
-
-      if (
-        interaction.isButton() &&
-        interaction.customId ===
-          "exchange_status"
-      ) {
-
-        const allowed =
-          await canUseAuto(
-            interaction.member
-          );
-
-        if (!allowed) {
-
-          return interaction.reply({
-
-            content:
-              "❌ ليس لديك صلاحية.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        const userData =
-          getUserData(
-            interaction.guild.id,
-            interaction.user.id
-          );
-
-        if (
-          userData.active
-        ) {
-
-          const channel =
-            interaction.guild
-              .channels.cache.get(
-                userData.channelId
-              );
-
-          return interaction.reply({
-
-            embeds: [
-
-              new EmbedBuilder()
-
-                .setTitle(
-                  "📊 حالة التبادل"
-                )
-
-                .setDescription(
-
-                  "الحالة: 🟢 **نشط**\n\n" +
-
-                  `الروم: ${
-                    channel
-                      ? `<#${channel.id}>`
-                      : "غير موجودة"
-                  }\n\n` +
-
-                  `⏱️ المدة: ${postIntervalMinutes} دقيقة`
-
-                )
-
-                .setColor(
-                  0x57F287
-                )
-
-            ],
-
-            ephemeral: true
-
-          });
-
-        }
-
-        if (
-          userData.waitingForPost
-        ) {
-
-          return interaction.reply({
-
-            embeds: [
-
-              new EmbedBuilder()
-
-                .setTitle(
-                  "📊 حالة التبادل"
-                )
-
-                .setDescription(
-                  "الحالة: 🟡 **في انتظار المنشور**\n\n" +
-                  "راجع الخاص وأرسل المنشور."
-                )
-
-                .setColor(
-                  0xFEE75C
-                )
-
-            ],
-
-            ephemeral: true
-
-          });
-
-        }
-
-        return interaction.reply({
-
-          embeds: [
-
-            new EmbedBuilder()
-
-              .setTitle(
-                "📊 حالة التبادل"
-              )
-
-              .setDescription(
-                "الحالة: 🔴 **غير نشط**"
-              )
-
-              .setColor(
-                0xED4245
-              )
-
-          ],
-
-          ephemeral: true
-
-        });
-
-      }
-
-      // ==================================================
-      // DECREASE TIME
-      // ==================================================
-
-      if (
-        interaction.isButton() &&
-        interaction.customId ===
-          "time_decrease"
-      ) {
-
-        const allowed =
-          await canControlSettings(
-            interaction.member
-          );
-
-        if (!allowed) {
-
-          return interaction.reply({
-
-            content:
-              "❌ الأدمن والـOwner فقط.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        if (
-          postIntervalMinutes <= 1
-        ) {
-
-          return interaction.reply({
-
-            content:
-              "⚠️ أقل مدة مسموحة هي دقيقة واحدة.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        postIntervalMinutes--;
-
-        saveInterval();
-
-        return interaction.reply({
-
-          content:
-            `➖ تم تقليل المدة إلى **${postIntervalMinutes} دقيقة**.`,
-
-          ephemeral: true
-
-        });
-
-      }
-
-      // ==================================================
-      // INCREASE TIME
-      // ==================================================
-
-      if (
-        interaction.isButton() &&
-        interaction.customId ===
-          "time_increase"
-      ) {
-
-        const allowed =
-          await canControlSettings(
-            interaction.member
-          );
-
-        if (!allowed) {
-
-          return interaction.reply({
-
-            content:
-              "❌ الأدمن والـOwner فقط.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        postIntervalMinutes++;
-
-        saveInterval();
-
-        return interaction.reply({
-
-          content:
-            `➕ تم زيادة المدة إلى **${postIntervalMinutes} دقيقة**.`,
-
-          ephemeral: true
-
-        });
-
-      }
-
-      // ==================================================
-      // SET TIME BUTTON
-      // ==================================================
-
-      if (
-        interaction.isButton() &&
-        interaction.customId ===
-          "time_set"
-      ) {
-
-        const allowed =
-          await canControlSettings(
-            interaction.member
-          );
-
-        if (!allowed) {
-
-          return interaction.reply({
-
-            content:
-              "❌ الأدمن والـOwner فقط.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        const modal =
-          new ModalBuilder()
-
-            .setCustomId(
-              "set_time_modal"
-            )
-
-            .setTitle(
-              "⏱️ تحديد مدة إعادة النشر"
-            );
-
-        const input =
-          new TextInputBuilder()
-
-            .setCustomId(
-              "time_input"
-            )
-
-            .setLabel(
-              "المدة بالدقائق"
-            )
-
-            .setPlaceholder(
-              "مثال: 5"
-            )
-
-            .setStyle(
-              TextInputStyle.Short
-            )
-
-            .setRequired(true)
-
-            .setMinLength(1)
-
-            .setMaxLength(5);
-
-        const row =
-          new ActionRowBuilder()
-            .addComponents(
-              input
-            );
-
-        modal.addComponents(
-          row
-        );
-
-        return interaction.showModal(
-          modal
-        );
-
-      }
-
-      // ==================================================
-      // MODAL
-      // ==================================================
-
-      if (
-        interaction.isModalSubmit() &&
-        interaction.customId ===
-          "set_time_modal"
-      ) {
-
-        const allowed =
-          await canControlSettings(
-            interaction.member
-          );
-
-        if (!allowed) {
-
-          return interaction.reply({
-
-            content:
-              "❌ الأدمن والـOwner فقط.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        const value =
-          interaction.fields
-            .getTextInputValue(
-              "time_input"
-            );
-
-        const minutes =
-          Number(value);
-
-        if (
-          !Number.isInteger(
-            minutes
-          ) ||
-          minutes < 1 ||
-          minutes > 10080
-        ) {
-
-          return interaction.reply({
-
-            content:
-              "❌ اكتب رقم صحيح من 1 إلى 10080 دقيقة.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-        postIntervalMinutes =
-          minutes;
-
-        saveInterval();
-
-        return interaction.reply({
-
-          content:
-            `✅ تم تغيير مدة إعادة النشر إلى **${postIntervalMinutes} دقيقة**.`,
-
-          ephemeral: true
-
-        });
-
-      }
-
-    } catch (error) {
-
-      console.error(
-        "Interaction Error:",
-        error
-      );
-
-      try {
-
-        if (
-          !interaction.replied &&
-          !interaction.deferred
-        ) {
-
-          await interaction.reply({
-
-            content:
-              "❌ حدث خطأ غير متوقع.",
-
-            ephemeral: true
-
-          });
-
-        }
-
-      } catch {}
-
-    }
-
-  }
-);
-
-// ==================================================
-// SAVE INTERVAL
-// ==================================================
-
-function saveInterval() {
-
-  config.postIntervalMinutes =
-    postIntervalMinutes;
-
-  try {
-
-    fs.writeFileSync(
-
-      path.join(
-        __dirname,
-        "config.json"
-      ),
-
-      JSON.stringify(
-        config,
-        null,
-        2
-      ),
-
-      "utf8"
-
-    );
-
-  } catch (error) {
-
-    console.error(
-      "Could not save config:",
-      error
-    );
-
-  }
-
-}
-
-// ==================================================
-// DM RECEIVER
-// ==================================================
-
-client.on(
-  "messageCreate",
-  async message => {
-
-    try {
-
-      if (
-        message.author.bot
-      ) {
-        return;
-      }
-
-      if (
-        message.channel.type !==
-        ChannelType.DM
-      ) {
-        return;
-      }
-
-      if (
-        !data.users
-      ) {
-        return;
-      }
-
-      // ==================================================
-      // FIND WAITING USER
-      // ==================================================
-
-      const entries =
-        Object.entries(
-          data.users
-        )
-
-          .filter(
-            ([, user]) =>
-              user.userId ===
-                message.author.id &&
-              user.waitingForPost ===
-                true
-          )
-
-          .sort(
-            ([, a], [, b]) =>
-              Number(
-                b.waitingSince || 0
-              ) -
-              Number(
-                a.waitingSince || 0
-              )
-          );
-
-      if (
-        entries.length === 0
-      ) {
-        return;
-      }
-
-      const [
-        key,
-        userData
-      ] = entries[0];
-
-      if (
-        !userData.channelId
-      ) {
-
-        return message.reply(
-          "❌ لم يتم تحديد مكان المنشور."
-        );
-
-      }
-
-      // ==================================================
-      // FIND CHANNEL
-      // ==================================================
-
-      let targetChannel =
-        null;
-
-      for (
-        const guild of
-          client.guilds.cache.values()
-      ) {
-
-        const channel =
-          guild.channels.cache.get(
-            userData.channelId
-          );
-
-        if (channel) {
-
-          targetChannel =
-            channel;
-
-          break;
-
-        }
-
-      }
-
-      if (
-        !targetChannel
-      ) {
-
-        return message.reply(
-          "❌ الروم لم تعد موجودة."
-        );
-
-      }
-
-      if (
-        targetChannel.type !==
-        ChannelType.GuildText
-      ) {
-
-        return message.reply(
-          "❌ الروم ليست روم نصية."
-        );
-
-      }
-
-      // ==================================================
-      // CONTENT
-      // ==================================================
-
-      const attachments =
-        [
-          ...message.attachments.values()
-        ].map(
-          attachment =>
-            attachment.url
-        );
-
-      if (
-        !message.content &&
-        attachments.length === 0
-      ) {
-
-        return message.reply(
-          "❌ أرسل نصاً أو صورة أو ملفاً."
-        );
-
-      }
-
-      // ==================================================
-      // SAVE
-      // ==================================================
-
-      userData.content =
-        message.content || "";
-
-      userData.attachments =
-        attachments;
-
-      userData.waitingForPost =
-        false;
-
-      userData.waitingSince =
-        0;
-
-      userData.active =
-        true;
-
-      userData.lastPostedAt =
-        0;
-
-      saveData();
-
-      // ==================================================
-      // FIRST POST
-      // ==================================================
-
-      const success =
-        await publishPost(
-          key
-        );
-
-      if (!success) {
-
-        userData.active =
-          false;
-
-        saveData();
-
-        return message.reply(
-
-          "❌ حصل خطأ أثناء نشر المنشور.\n" +
-          "تأكد أن البوت لديه صلاحية Send Messages و Attach Files."
-
-        );
-
-      }
-
-      await message.reply(
-
-        "✅ **تم إنشاء المنشور بنجاح!**\n\n" +
-
-        `⏱️ سيتم إعادة نشره كل **${postIntervalMinutes} دقيقة**.\n\n` +
-
-        "🛑 لإيقافه اضغط **إيقاف المنشور** من الـPanel."
-
-      );
-
-    } catch (error) {
-
-      console.error(
-        "DM Error:",
-        error
-      );
-
-      try {
-
-        await message.reply(
-          "❌ حدث خطأ أثناء معالجة المنشور."
-        );
-
-      } catch {}
-
-    }
-
-  }
-);
-
-// ==================================================
-// PUBLISH POST
-// ==================================================
-
-async function publishPost(
-  userKey
-) {
-
-  if (
-    !data.users[userKey]
-  ) {
-    return false;
-  }
-
-  const userData =
-    data.users[userKey];
-
-  if (
-    !userData.active
-  ) {
-    return false;
-  }
-
-  if (
-    !userData.channelId
-  ) {
-    return false;
-  }
-
-  if (
-    publishingUsers.has(
-      userKey
-    )
-  ) {
-    return false;
-  }
-
-  publishingUsers.add(
-    userKey
-  );
-
-  try {
-
-    let channel =
-      null;
-
-    for (
-      const guild of
-        client.guilds.cache.values()
-    ) {
-
-      const found =
-        guild.channels.cache.get(
-          userData.channelId
-        );
-
-      if (found) {
-
-        channel =
-          found;
-
-        break;
-
-      }
-
-    }
-
-    if (!channel) {
-      return false;
-    }
-
-    if (
-      channel.type !==
-      ChannelType.GuildText
-    ) {
-      return false;
-    }
-
-    const payload = {};
-
-    if (
-      userData.content &&
-      userData.content.trim()
-    ) {
-
-      payload.content =
-        userData.content;
-
-    }
-
-    if (
-      Array.isArray(
-        userData.attachments
-      ) &&
-      userData.attachments.length
-    ) {
-
-      payload.files =
-        userData.attachments;
-
-    }
-
-    if (
-      !payload.content &&
-      !payload.files
-    ) {
-
-      return false;
-
-    }
-
-    await channel.send(
-      payload
-    );
-
-    userData.lastPostedAt =
-      Date.now();
-
-    saveData();
-
-    console.log(
-      `Post published for ${userData.userId}`
-    );
-
-    return true;
-
-  } catch (error) {
-
-    console.error(
-      "Publish Error:",
-      error
-    );
-
-    return false;
-
-  } finally {
-
-    publishingUsers.delete(
-      userKey
-    );
-
-  }
-
-}
-
-// ==================================================
-// AUTO POST CHECKER
-// ==================================================
-
-setInterval(
-  async () => {
-
-    try {
-
-      if (!data.users) {
-        return;
-      }
-
-      const now =
-        Date.now();
-
-      const interval =
-        getIntervalMs();
-
-      for (
-        const [
-          userKey,
-          userData
-        ] of Object.entries(
-          data.users
-        )
-      ) {
-
-        if (
-          !userData.active
-        ) {
-          continue;
-        }
-
-        if (
-          !userData.lastPostedAt
-        ) {
-          continue;
-        }
-
-        const elapsed =
-          now -
-          userData.lastPostedAt;
-
-        if (
-          elapsed >= interval
-        ) {
-
-          await publishPost(
-            userKey
-          );
-
-        }
-
-      }
-
-    } catch (error) {
-
-      console.error(
-        "Auto Post Error:",
-        error
-      );
-
-    }
-
-  },
-  30 * 1000
-);
-
-// ==================================================
-// ERROR HANDLERS
-// ==================================================
-
-process.on(
-  "unhandledRejection",
-  error => {
-
-    console.error(
-      "Unhandled Rejection:",
-      error
-    );
-
-  }
-);
-
-process.on(
-  "uncaughtException",
-  error => {
-
-    console.error(
-      "Uncaught Exception:",
-      error
-    );
-
-  }
-);
-
-// ==================================================
-// TOKEN
-// ==================================================
-
-if (
-  !process.env.TOKEN
-) {
-
-  console.error(
-    "❌ TOKEN is missing from Railway Variables."
-  );
-
-  process.exit(1);
-
-}
 
 // ==================================================
 // LOGIN
 // ==================================================
 
 client.login(
-  process.env.TOKEN
-)
-.then(() => {
-
-  console.log(
-    "Login request sent."
-  );
-
-})
-.catch(error => {
-
-  console.error(
-    "❌ Login failed:",
-    error
-  );
-
-});
+  config.token
+);
