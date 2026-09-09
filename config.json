@@ -1,0 +1,10 @@
+{
+  "allowedRoleIds": [
+    "1547161680209772544",
+    "1547161717841068083",
+    "1547161721737711616"
+  ],
+  "allowBoosters": true,
+  "allowAdministrators": true,
+  "postIntervalMinutes": 10
+}
