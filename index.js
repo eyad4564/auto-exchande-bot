@@ -80,6 +80,9 @@ const INTERVAL_MS =
   60 *
   1000;
 
+// لمنع نشر نفس المنشور مرتين في نفس اللحظة
+const publishingUsers = new Set();
+
 // ==================================================
 // USER KEY
 // ==================================================
@@ -134,7 +137,7 @@ function getUserData(guildId, userId) {
 }
 
 // ==================================================
-// DELETE USER DATA
+// RESET USER EXCHANGE
 // ==================================================
 
 function resetUserExchange(guildId, userId) {
@@ -192,7 +195,6 @@ function isAllowed(member) {
   }
 
   // Booster
-  // Requires 2 or more boosts when the guild provides the count.
   if (config.allowBoosters === true) {
     const boostCount =
       Number(member.guild.premiumSubscriptionCount || 0);
@@ -214,13 +216,17 @@ function createPanelEmbed() {
     .setTitle("Auto Exchange")
     .setDescription(
       "اختر العملية التي تريدها من الأزرار بالأسفل.\n\n" +
-      "بدء التبادل\n" +
+
+      "**🚀 بدء التبادل**\n" +
       "ابدأ عملية نشر منشورك تلقائيا.\n\n" +
-      "إيقاف التبادل\n" +
+
+      "**🛑 إيقاف التبادل**\n" +
       "إيقاف النشر التلقائي.\n\n" +
-      "حالة التبادل\n" +
+
+      "**📊 حالة التبادل**\n" +
       "عرض حالة التبادل الحالية.\n\n" +
-      يتم النشر كل ${config.postIntervalMinutes} دقائق.
+
+      `يتم النشر كل ${config.postIntervalMinutes} دقائق.`
     )
     .setColor(0x5865f2);
 }
@@ -278,9 +284,17 @@ const commands = [
 client.once("ready", async () => {
 
   console.log("--------------------------------");
-  console.log(Logged in as ${client.user.tag});
-  console.log(Bot ID: ${client.user.id});
+  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`Bot ID: ${client.user.id}`);
   console.log("--------------------------------");
+
+  if (!process.env.TOKEN) {
+    console.error(
+      "TOKEN is missing from Railway Variables."
+    );
+
+    return;
+  }
 
   const rest = new REST({
     version: "10"
@@ -339,9 +353,18 @@ client.on("interactionCreate", async interaction => {
           interaction.user.id !== OWNER_ID &&
           !isAdmin
         ) {
+
           return interaction.reply({
             content:
               "ليس لديك صلاحية استخدام هذا الأمر.",
+            ephemeral: true
+          });
+
+        }
+
+        if (!interaction.channel) {
+          return interaction.reply({
+            content: "لا يمكن إرسال الـ Panel هنا.",
             ephemeral: true
           });
         }
@@ -440,7 +463,7 @@ client.on("interactionCreate", async interaction => {
           currentText =
             settings.exchangeChannels
               .map(id =>
-                <#${id}>
+                `<#${id}>`
               )
               .join("\n");
 
@@ -454,7 +477,7 @@ client.on("interactionCreate", async interaction => {
             .setDescription(
               "اختر القنوات التي تريد السماح للأعضاء باستخدامها.\n\n" +
               "القنوات التي لا تختارها لن تظهر للأعضاء.\n\n" +
-              "القنوات الحالية:\n" +
+              "**القنوات الحالية:**\n" +
               currentText
             )
             .setColor(0xfee75c);
@@ -504,7 +527,7 @@ client.on("interactionCreate", async interaction => {
       const channelsText =
         interaction.values
           .map(id =>
-            <#${id}>
+            `<#${id}>`
           )
           .join("\n");
 
@@ -594,10 +617,12 @@ client.on("interactionCreate", async interaction => {
           .map(channel => ({
             label:
               channel.name.slice(0, 100),
+
             value:
               channel.id,
+
             description:
-              النشر في #${channel.name}
+              `النشر في #${channel.name}`.slice(0, 100)
           }));
 
       const menu =
@@ -686,6 +711,15 @@ client.on("interactionCreate", async interaction => {
       userData.active =
         false;
 
+      userData.content =
+        "";
+
+      userData.attachments =
+        [];
+
+      userData.lastPostedAt =
+        0;
+
       saveData();
 
       try {
@@ -694,10 +728,10 @@ client.on("interactionCreate", async interaction => {
           "تم اختيار قناة التبادل بنجاح.\n\n" +
           "أرسل الآن منشورك هنا.\n\n" +
           "يمكنك إرسال:\n" +
-          "نص فقط\n" +
-          "صورة فقط\n" +
-          "نص + صورة\n" +
-          "ملف أو مرفق\n\n" +
+          "• نص فقط\n" +
+          "• صورة فقط\n" +
+          "• نص + صورة\n" +
+          "• ملف أو مرفق\n\n" +
           "سيتم نشر المنشور تلقائيا."
         );
 
@@ -737,6 +771,20 @@ client.on("interactionCreate", async interaction => {
         "exchange_stop"
     ) {
 
+      if (
+        !isAllowed(
+          interaction.member
+        )
+      ) {
+
+        return interaction.reply({
+          content:
+            "ليس لديك صلاحية استخدام Auto Exchange.",
+          ephemeral: true
+        });
+
+      }
+
       const userData =
         getUserData(
           interaction.guild.id,
@@ -756,17 +804,14 @@ client.on("interactionCreate", async interaction => {
 
       }
 
-      userData.active =
-        false;
-
-      userData.waitingForPost =
-        false;
-
-      saveData();
+      resetUserExchange(
+        interaction.guild.id,
+        interaction.user.id
+      );
 
       return interaction.reply({
         content:
-          "تم إيقاف التبادل.",
+          "تم إيقاف التبادل وحذف البيانات الحالية.",
         ephemeral: true
       });
 
@@ -781,6 +826,20 @@ client.on("interactionCreate", async interaction => {
       interaction.customId ===
         "exchange_status"
     ) {
+
+      if (
+        !isAllowed(
+          interaction.member
+        )
+      ) {
+
+        return interaction.reply({
+          content:
+            "ليس لديك صلاحية استخدام Auto Exchange.",
+          ephemeral: true
+        });
+
+      }
 
       const userData =
         getUserData(
@@ -803,13 +862,13 @@ client.on("interactionCreate", async interaction => {
                 "حالة التبادل"
               )
               .setDescription(
-                "الحالة: نشط\n\n" +
+                "الحالة: 🟢 نشط\n\n" +
                 `القناة: ${
                   channel
-                    ? <#${channel.id}>
+                    ? `<#${channel.id}>`
                     : "غير موجودة"
                 }\n` +
-                النشر كل ${config.postIntervalMinutes} دقائق
+                `النشر كل ${config.postIntervalMinutes} دقائق`
               )
               .setColor(0x57f287)
           ],
@@ -830,7 +889,7 @@ client.on("interactionCreate", async interaction => {
                 "حالة التبادل"
               )
               .setDescription(
-                "الحالة: في انتظار المنشور\n\n" +
+                "الحالة: 🟡 في انتظار المنشور\n\n" +
                 "راجع الخاص وأرسل المنشور."
               )
               .setColor(0xfee75c)
@@ -848,7 +907,7 @@ client.on("interactionCreate", async interaction => {
               "حالة التبادل"
             )
             .setDescription(
-              "الحالة: غير نشط\n\n" +
+              "الحالة: 🔴 غير نشط\n\n" +
               "اضغط بدء التبادل للبدء."
             )
             .setColor(0xed4245)
@@ -896,10 +955,12 @@ client.on(
 
     try {
 
+      // تجاهل البوتات
       if (message.author.bot) {
         return;
       }
 
+      // نريد الخاص فقط
       if (
         message.channel.type !==
         ChannelType.DM
@@ -911,7 +972,10 @@ client.on(
         return;
       }
 
-      // Find the user's active setup
+      // ==================================================
+      // FIND WAITING USER
+      // ==================================================
+
       const userEntries =
         Object.entries(data.users)
           .filter(
@@ -927,12 +991,19 @@ client.on(
         return;
       }
 
+      // نستخدم أحدث عملية
       const [key, userData] =
-        userEntries[0];
+        userEntries[userEntries.length - 1];
 
       if (!userData.channelId) {
-        return;
+        return message.reply(
+          "لم يتم تحديد قناة للتبادل."
+        );
       }
+
+      // ==================================================
+      // FIND TARGET CHANNEL
+      // ==================================================
 
       let targetChannel = null;
       let targetGuild = null;
@@ -955,7 +1026,6 @@ client.on(
             guild;
 
           break;
-
         }
 
       }
@@ -987,9 +1057,10 @@ client.on(
       // ==================================================
 
       const attachments =
-        message.attachments.map(
-          attachment => attachment.url
-        );
+        [...message.attachments.values()]
+          .map(
+            attachment => attachment.url
+          );
 
       if (
         !message.content &&
@@ -1047,7 +1118,7 @@ client.on(
 
       await message.reply(
         "تم استلام المنشور ونشره الآن.\n\n" +
-        سيتم إعادة نشره كل ${config.postIntervalMinutes} دقائق.\n\n +
+        `سيتم إعادة نشره كل ${config.postIntervalMinutes} دقائق.\n\n` +
         "لإيقاف التبادل استخدم زر إيقاف التبادل من الـ Panel."
       );
 
@@ -1095,73 +1166,91 @@ async function publishPost(userKey) {
     return false;
   }
 
-  let channel = null;
+  // منع التكرار
+  if (publishingUsers.has(userKey)) {
+    return false;
+  }
 
-  for (
-    const guild of client.guilds.cache.values()
-  ) {
+  publishingUsers.add(userKey);
 
-    const found =
-      guild.channels.cache.get(
-        userData.channelId
-      );
+  try {
 
-    if (found) {
+    // ==================================================
+    // FIND CHANNEL
+    // ==================================================
 
-      channel =
-        found;
+    let channel = null;
 
-      break;
+    for (
+      const guild of client.guilds.cache.values()
+    ) {
+
+      const found =
+        guild.channels.cache.get(
+          userData.channelId
+        );
+
+      if (found) {
+
+        channel =
+          found;
+
+        break;
+      }
 
     }
 
-  }
+    if (!channel) {
+      return false;
+    }
 
-  if (!channel) {
-    return false;
-  }
+    if (
+      channel.type !==
+      ChannelType.GuildText
+    ) {
+      return false;
+    }
 
-  if (
-    channel.type !==
-    ChannelType.GuildText
-  ) {
-    return false;
-  }
+    // ==================================================
+    // CREATE PAYLOAD
+    // ==================================================
 
-  const payload = {};
+    const payload = {};
 
-  if (
-    userData.content &&
-    userData.content.trim().length > 0
-  ) {
+    if (
+      userData.content &&
+      userData.content.trim().length > 0
+    ) {
 
-    payload.content =
-      userData.content;
+      payload.content =
+        userData.content;
 
-  }
+    }
 
-  if (
-    Array.isArray(
-      userData.attachments
-    ) &&
-    userData.attachments.length > 0
-  ) {
+    if (
+      Array.isArray(
+        userData.attachments
+      ) &&
+      userData.attachments.length > 0
+    ) {
 
-    payload.files =
-      userData.attachments;
+      payload.files =
+        userData.attachments;
 
-  }
+    }
 
-  if (
-    !payload.content &&
-    !payload.files
-  ) {
+    if (
+      !payload.content &&
+      !payload.files
+    ) {
 
-    return false;
+      return false;
 
-  }
+    }
 
-  try {
+    // ==================================================
+    // SEND
+    // ==================================================
 
     await channel.send(
       payload
@@ -1173,7 +1262,7 @@ async function publishPost(userKey) {
     saveData();
 
     console.log(
-      Post published for user ${userData.userId}
+      `Post published for user ${userData.userId}`
     );
 
     return true;
@@ -1186,6 +1275,10 @@ async function publishPost(userKey) {
     );
 
     return false;
+
+  } finally {
+
+    publishingUsers.delete(userKey);
 
   }
 
@@ -1252,6 +1345,30 @@ setInterval(
 
   },
   30 * 1000
+);
+
+// ==================================================
+// PROCESS ERROR HANDLERS
+// ==================================================
+
+process.on(
+  "unhandledRejection",
+  error => {
+    console.error(
+      "Unhandled Promise Rejection:",
+      error
+    );
+  }
+);
+
+process.on(
+  "uncaughtException",
+  error => {
+    console.error(
+      "Uncaught Exception:",
+      error
+    );
+  }
 );
 
 // ==================================================
