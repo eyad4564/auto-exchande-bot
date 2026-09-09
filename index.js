@@ -9,7 +9,8 @@ const {
   EmbedBuilder,
   PermissionsBitField,
   REST,
-  Routes
+  Routes,
+  ChannelType
 } = require("discord.js");
 
 const fs = require("fs");
@@ -29,7 +30,7 @@ const client = new Client({
 const DATA_FILE = "./data.json";
 
 if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify({}, null, 2));
+  fs.writeFileSync(DATA_FILE, "{}");
 }
 
 function loadData() {
@@ -40,38 +41,79 @@ function loadData() {
   }
 }
 
-function saveData(data) {
+function saveData() {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
 let data = loadData();
+
+/*
+  المستخدمون الذين اختاروا قناة وينتظر البوت منشورهم في الخاص
+*/
 const pendingDM = new Map();
 
+/*
+  التأكد من صلاحية العضو
+*/
 function isAllowed(member) {
   if (!member) return false;
-  if (config.allowAdministrators && member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+
+  // Administrator
+  if (
+    config.allowAdministrators &&
+    member.permissions.has(PermissionsBitField.Flags.Administrator)
+  ) {
     return true;
   }
+
+  // Double Booster
   if (config.allowBoosters && member.premiumSince) {
     return true;
   }
-  return config.allowedRoleIds.some(roleId => member.roles.cache.has(roleId));
+
+  // الرتب المحددة
+  if (
+    Array.isArray(config.allowedRoleIds) &&
+    config.allowedRoleIds.some(roleId =>
+      member.roles.cache.has(roleId)
+    )
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
-function panelEmbed() {
+/*
+  التأكد أن القناة محددة من الـOwner
+*/
+function isExchangeChannel(channelId) {
+  return (
+    Array.isArray(config.exchangeChannels) &&
+    config.exchangeChannels.includes(channelId)
+  );
+}
+
+/*
+  Panel
+*/
+function createPanelEmbed() {
   return new EmbedBuilder()
     .setTitle("🔄 Auto Exchange")
     .setDescription(
-      "اختر العملية التي تريدها من الأزرار بالأسفل.\n\n" +
-      "🚀 **بدء التبادل**\n" +
-      "🛑 **إيقاف التبادل**\n" +
-      "📊 **حالة التبادل**\n\n" +
-      `⏱️ النشر يتم كل **${config.postIntervalMinutes} دقائق**`
+      "مرحبًا بك في نظام التبادل التلقائي.\n\n" +
+      "اضغط على *بدء التبادل* لاختيار روم التبادل وإرسال منشورك.\n\n" +
+      "🚀 بدء التبادل\n" +
+      "🛑 إيقاف التبادل\n" +
+      "📊 حالتي\n\n" +
+      ⏱️ يتم نشر المنشور كل **${config.postIntervalMinutes} دقائق**
     )
-    .setFooter({ text: "Auto Exchange System" });
+    .setFooter({
+      text: "Auto Exchange System"
+    });
 }
 
-function panelButtons() {
+function createPanelButtons() {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("auto_start")
@@ -93,120 +135,302 @@ function panelButtons() {
   );
 }
 
-// تشغيل البوت ورفع أمر السلاش تلقائياً
-client.once("ready", async () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-  
+/*
+  إنشاء قائمة الرومات المحددة من الـOwner
+*/
+function createExchangeMenu() {
+  const channels = config.exchangeChannels
+    .map(id => {
+      const channel = client.channels.cache.get(id);
+
+      if (!channel) return null;
+
+      return {
+        label: channel.name.slice(0, 100),
+        value: channel.id,
+        description: "روم مسموح للتبادل"
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 25);
+
+  if (!channels.length) return null;
+
+  return new StringSelectMenuBuilder()
+    .setCustomId("exchange_channel")
+    .setPlaceholder("📢 اختر روم التبادل")
+    .addOptions(channels);
+}
+
+/*
+  تسجيل أوامر Slash
+*/
+async function registerCommands() {
   const commands = [
     {
       name: "auto-panel",
-      description: "إرسال لوحة التحكم في التبادل التلقائي"
+      description: "إرسال لوحة Auto Exchange"
+    },
+    {
+      name: "auto-setup",
+      description: "تحديد رومات التبادل - للـOwner فقط"
     }
   ];
 
-  const rest = new REST({ version: "10" }).setToken(process.env.TOKEN || config.token);
+  const rest = new REST({ version: "10" }).setToken(
+    process.env.TOKEN
+  );
 
   try {
-    console.log("⏳ جاري تسجيل أوامر السلاش (Slash Commands)...");
     await rest.put(
       Routes.applicationCommands(client.user.id),
-      { body: commands }
+      {
+        body: commands
+      }
     );
-    console.log("✅ تم تسجيل الأوامر بنجاح!");
+
+    console.log("✅ Slash Commands registered");
   } catch (error) {
-    console.error("❌ فشل تسجيل الأوامر:", error);
+    console.error("❌ Command registration error:", error);
   }
-  
+}
+
+/*
+  تشغيل البوت
+*/
+client.once("ready", async () => {
+  console.log(✅ Logged in as ${client.user.tag});
+
+  await registerCommands();
+
   console.log("🚀 Auto Exchange is running");
 });
 
+/*
+  التفاعلات
+*/
 client.on("interactionCreate", async interaction => {
   try {
-    // 1. التعامل مع أوامر السلاش
+
+    /*
+      =========================
+      Slash Commands
+      =========================
+    */
+
     if (interaction.isChatInputCommand()) {
+
+      /*
+        /auto-panel
+      */
+
       if (interaction.commandName === "auto-panel") {
-        if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+
+        if (
+          interaction.user.id !== config.ownerId &&
+          !interaction.member.permissions.has(
+            PermissionsBitField.Flags.Administrator
+          )
+        ) {
           return interaction.reply({
-            content: "❌ الأمر ده للإدارة فقط.",
+            content: "❌ هذا الأمر للإدارة فقط.",
             ephemeral: true
           });
         }
 
-        return await interaction.reply({
-          embeds: [panelEmbed()],
-          components: [panelButtons()]
+        return interaction.reply({
+          embeds: [createPanelEmbed()],
+          components: [createPanelButtons()]
+        });
+      }
+
+      /*
+        /auto-setup
+      */
+
+      if (interaction.commandName === "auto-setup") {
+
+        if (interaction.user.id !== config.ownerId) {
+          return interaction.reply({
+            content: "❌ هذا الأمر للـOwner فقط.",
+            ephemeral: true
+          });
+        }
+
+        const channels = interaction.guild.channels.cache
+          .filter(
+            channel =>
+              channel.type === ChannelType.GuildText
+          )
+          .map(channel => ({
+            label: channel.name.slice(0, 100),
+            value: channel.id,
+            description: "اضغط لإضافة/إزالة الروم"
+          }))
+          .slice(0, 25);
+
+        if (!channels.length) {
+          return interaction.reply({
+            content: "❌ لا توجد رومات نصية.",
+            ephemeral: true
+          });
+        }
+
+        const menu = new StringSelectMenuBuilder()
+          .setCustomId("owner_exchange_setup")
+          .setPlaceholder("📢 اختر رومات التبادل")
+          .setMinValues(1)
+          .setMaxValues(Math.min(channels.length, 25))
+          .addOptions(channels);
+
+        return interaction.reply({
+          content:
+            "👑 *إعداد رومات التبادل*\n\n" +
+            "اختر الرومات التي تريد السماح بالتبادل فيها.\n" +
+            "⚠️ الرومات التي لا تختارها لن تظهر للأعضاء.",
+          components: [
+            new ActionRowBuilder().addComponents(menu)
+          ],
+          ephemeral: true
         });
       }
     }
 
-    // 2. التعامل مع القائمة المنسدلة (تم نقلها هنا قبل شرط الأزرار)
-    if (interaction.isStringSelectMenu() && interaction.customId === "exchange_channel") {
+    /*
+      =========================
+      Owner Setup Menu
+      =========================
+    */
+
+    if (
+      interaction.isStringSelectMenu() &&
+      interaction.customId === "owner_exchange_setup"
+    ) {
+
+      if (interaction.user.id !== config.ownerId) {
+        return interaction.reply({
+          content: "❌ هذا للـOwner فقط.",
+          ephemeral: true
+        });
+      }
+
+      config.exchangeChannels = interaction.values;
+
+      fs.writeFileSync(
+        "./config.json",
+        JSON.stringify(config, null, 2)
+      );
+
+      const list = interaction.values
+        .map(id => <#${id}>)
+        .join("\n");
+
+      return interaction.update({
+        content:
+          "✅ *تم حفظ رومات التبادل*\n\n" +
+          list +
+          "\n\n🚫 أي روم آخر لن يظهر للأعضاء.",
+        components: []
+      });
+    }
+
+    /*
+      =========================
+      اختيار روم التبادل
+      =========================
+    */
+
+    if (
+      interaction.isStringSelectMenu() &&
+      interaction.customId === "exchange_channel"
+    ) {
+
       const channelId = interaction.values[0];
 
-      pendingDM.set(interaction.user.id, { channelId });
+      if (!isExchangeChannel(channelId)) {
+        return interaction.update({
+          content: "❌ هذا الروم غير مسموح للتبادل.",
+          components: []
+        });
+      }
+
+      pendingDM.set(interaction.user.id, {
+        channelId
+      });
 
       try {
+
         await interaction.user.send(
-          "📨 **Auto Exchange**\n\n" +
-          "أرسل الآن **المنشور** الذي تريد نشره.\n" +
-          "سيتم استخدام آخر منشور ترسله في التبادل."
+          "📨 *Auto Exchange*\n\n" +
+          "أرسل الآن المنشور الذي تريد نشره.\n\n" +
+          "يمكنك إرسال:\n" +
+          "📝 نص\n" +
+          "🖼️ صورة\n" +
+          "📝 + 🖼️ نص وصورة\n" +
+          "📎 ملفات ومرفقات\n\n" +
+          "وسيتم نشره تلقائيًا كل 10 دقائق."
         );
+
       } catch {
+
+        pendingDM.delete(interaction.user.id);
+
         return interaction.update({
           content:
-            "❌ لا أستطيع إرسال DM لك.\n" +
-            "افتح الخاص من إعدادات Discord ثم حاول مرة أخرى.",
+            "❌ لا أستطيع إرسال رسالة خاصة لك.\n" +
+            "افتح استقبال الرسائل الخاصة من إعدادات Discord.",
           components: []
         });
       }
 
       return interaction.update({
         content:
-          "✅ تم اختيار قناة التبادل.\n" +
-          "📩 أرسلت لك رسالة في الخاص، أرسل فيها المنشور.",
+          "✅ تم اختيار روم التبادل.\n\n" +
+          "📩 افتح الخاص وأرسل المنشور للبوت.",
         components: []
       });
     }
 
-    // 3. التعامل مع الأزرار فقط بعد هذه النقطة
+    /*
+      =========================
+      Buttons
+      =========================
+    */
+
     if (!interaction.isButton()) return;
 
     const member = interaction.member;
 
-    if (interaction.customId === "auto_start" || interaction.customId === "auto_stop") {
+    /*
+      Start
+    */
+
+    if (interaction.customId === "auto_start") {
+
       if (!isAllowed(member)) {
         return interaction.reply({
           content:
-            "❌ غير مسموح لك باستخدام نظام Auto Exchange.\n" +
-            "يجب أن تكون Booster أو معك الرتبة المطلوبة أو تكون إداري.",
+            "❌ غير مسموح لك باستخدام Auto Exchange.\n\n" +
+            "يجب أن تكون:\n" +
+            "🚀 Double Booster\n" +
+            "🎖️ معك رتبة مسموحة\n" +
+            "👑 Administrator",
           ephemeral: true
         });
       }
-    }
 
-    if (interaction.customId === "auto_start") {
-      const channels = interaction.guild.channels.cache
-        .filter(c => c.isTextBased() && c.type === 0)
-        .map(c => ({
-          label: c.name.slice(0, 100),
-          value: c.id
-        }))
-        .slice(0, 25);
+      const menu = createExchangeMenu();
 
-      if (!channels.length) {
+      if (!menu) {
         return interaction.reply({
-          content: "❌ لا توجد قنوات متاحة.",
+          content:
+            "❌ الـOwner لم يحدد أي رومات للتبادل حتى الآن.",
           ephemeral: true
         });
       }
-
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId("exchange_channel")
-        .setPlaceholder("📢 اختر قناة التبادل")
-        .addOptions(channels);
 
       return interaction.reply({
-        content: "📢 اختر قناة التبادل:",
+        content: "📢 اختر روم التبادل:",
         components: [
           new ActionRowBuilder().addComponents(menu)
         ],
@@ -214,18 +438,31 @@ client.on("interactionCreate", async interaction => {
       });
     }
 
+    /*
+      Stop
+    */
+
     if (interaction.customId === "auto_stop") {
+
+      if (!isAllowed(member)) {
+        return interaction.reply({
+          content: "❌ غير مسموح لك باستخدام النظام.",
+          ephemeral: true
+        });
+      }
+
       const userId = interaction.user.id;
 
-      if (!data[userId]) {
+      if (!data[userId]?.active) {
         return interaction.reply({
-          content: "ℹ️ ليس لديك تبادل يعمل حاليًا.",
+          content: "🔴 لا يوجد لديك تبادل يعمل.",
           ephemeral: true
         });
       }
 
       data[userId].active = false;
-      saveData(data);
+
+      saveData();
 
       return interaction.reply({
         content: "🛑 تم إيقاف التبادل الخاص بك.",
@@ -233,26 +470,32 @@ client.on("interactionCreate", async interaction => {
       });
     }
 
-    if (interaction.customId === "auto_status") {
-      const userId = interaction.user.id;
-      const userData = data[userId];
+    /*
+      Status
+    */
 
-      if (!userData || !userData.active) {
+    if (interaction.customId === "auto_status") {
+
+      const userData = data[interaction.user.id];
+
+      if (!userData?.active) {
         return interaction.reply({
-          content: "🔴 لا يوجد لديك تبادل يعمل حاليًا.",
+          content: "🔴 ليس لديك تبادل يعمل حاليًا.",
           ephemeral: true
         });
       }
 
       return interaction.reply({
         content:
-          `🟢 التبادل يعمل\n` +
-          `📢 القناة: <#${userData.channelId}>\n` +
-          `⏱️ كل ${config.postIntervalMinutes} دقائق`,
+          "🟢 *التبادل يعمل*\n\n" +
+          📢 الروم: <#${userData.channelId}>\n +
+          ⏱️ كل ${config.postIntervalMinutes} دقائق,
         ephemeral: true
       });
     }
+
   } catch (error) {
+
     console.error(error);
 
     if (!interaction.replied && !interaction.deferred) {
@@ -264,71 +507,139 @@ client.on("interactionCreate", async interaction => {
   }
 });
 
+/*
+  =========================
+  استقبال المنشور من DM
+  =========================
+*/
+
 client.on("messageCreate", async message => {
+
   if (message.author.bot) return;
+
   if (!message.channel.isDMBased()) return;
 
   const setup = pendingDM.get(message.author.id);
+
   if (!setup) return;
 
   const channelId = setup.channelId;
+
+  if (!isExchangeChannel(channelId)) {
+    pendingDM.delete(message.author.id);
+
+    return message.reply(
+      "❌ هذا الروم لم يعد مسموحًا للتبادل."
+    );
+  }
+
   const text = message.content || "";
 
-  if (!text && message.attachments.size === 0) {
-    return message.reply("❌ أرسل منشورًا صالحًا.");
+  const attachments = [...message.attachments.values()].map(
+    attachment => attachment.url
+  );
+
+  if (!text && attachments.length === 0) {
+    return message.reply(
+      "❌ أرسل نصًا أو صورة أو ملفًا."
+    );
   }
 
   data[message.author.id] = {
     active: true,
     channelId,
     content: text,
-    attachments: [...message.attachments.values()].map(a => a.url),
+    attachments,
     startedAt: Date.now()
   };
 
-  saveData(data);
+  saveData();
+
   pendingDM.delete(message.author.id);
 
   await message.reply(
-    "✅ **تم تفعيل Auto Exchange!**\n\n" +
-    `📢 القناة: <#${channelId}>\n` +
-    `⏱️ النشر: كل **${config.postIntervalMinutes} دقائق**\n\n` +
-    "🛑 يمكنك إيقافه من لوحة التبادل."
+    "✅ *تم تفعيل التبادل!*\n\n" +
+    📢 الروم: <#${channelId}>\n +
+    "📝 تم حفظ المنشور\n" +
+    "🖼️ المرفقات محفوظة\n" +
+    ⏱️ سيتم النشر كل **${config.postIntervalMinutes} دقائق**\n\n +
+    "🛑 لإيقافه استخدم زر إيقاف التبادل من الـPanel."
   );
 
+  /*
+    أول نشر مباشرة
+  */
   await publishPost(message.author.id);
 });
 
+/*
+  =========================
+  نشر المنشور
+  =========================
+*/
+
 async function publishPost(userId) {
+
   const userData = data[userId];
+
   if (!userData || !userData.active) return;
 
+  if (!isExchangeChannel(userData.channelId)) {
+
+    userData.active = false;
+
+    saveData();
+
+    return;
+  }
+
   try {
-    const channel = await client.channels.fetch(userData.channelId);
+
+    const channel = await client.channels.fetch(
+      userData.channelId
+    );
+
     if (!channel || !channel.isTextBased()) return;
 
-    let content = userData.content || "";
+    const files = userData.attachments || [];
 
-    if (userData.attachments?.length) {
-      content += (content ? "\n" : "") + userData.attachments.join("\n");
-    }
+    await channel.send({
+      content: userData.content || undefined,
+      files: files
+    });
 
-    if (!content) return;
+    console.log(
+      📢 Published post for ${userId}
+    );
 
-    await channel.send({ content });
-    console.log(`📢 Published post for ${userId} in ${channel.id}`);
   } catch (error) {
-    console.error("Publish error:", error);
+
+    console.error(
+      ❌ Publish error for ${userId}:,
+      error
+    );
   }
 }
 
+/*
+  =========================
+  كل 10 دقائق
+  =========================
+*/
+
 setInterval(async () => {
+
   for (const userId of Object.keys(data)) {
-    const userData = data[userId];
-    if (!userData?.active) continue;
+
+    if (!data[userId]?.active) continue;
 
     await publishPost(userId);
   }
+
 }, config.postIntervalMinutes * 60 * 1000);
 
-client.login(process.env.TOKEN || config.token);
+/*
+  تشغيل البوت
+*/
+
+client.login(process.env.TOKEN);
