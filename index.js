@@ -85,7 +85,7 @@ const INTERVAL_MS =
 // ==================================================
 
 function getUserKey(guildId, userId) {
-  return ${guildId}_${userId};
+  return `${guildId}_${userId}`;
 }
 
 // ==================================================
