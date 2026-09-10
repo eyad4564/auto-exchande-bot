@@ -1,4 +1,3 @@
-```js
 const {
     Client,
     GatewayIntentBits,
@@ -78,12 +77,20 @@ if (fs.existsSync(DATA_FILE)) {
     }
 }
 
-if (!data.guilds) data.guilds = {};
-if (!data.posts) data.posts = {};
-if (!data.temporaryRoles) data.temporaryRoles = {};
+if (!data.guilds) {
+    data.guilds = {};
+}
+
+if (!data.posts) {
+    data.posts = {};
+}
+
+if (!data.temporaryRoles) {
+    data.temporaryRoles = {};
+}
 
 // ==================================================
-// TOKEN
+// TOKEN / OWNER
 // ==================================================
 
 const TOKEN =
@@ -127,16 +134,46 @@ const ROLE_POST_LIMITS = {
 // ==================================================
 
 const TIME_OPTIONS = [
-    { label: "1 دقيقة", value: "1" },
-    { label: "5 دقائق", value: "5" },
-    { label: "10 دقائق", value: "10" },
-    { label: "15 دقيقة", value: "15" },
-    { label: "30 دقيقة", value: "30" },
-    { label: "1 ساعة", value: "60" },
-    { label: "2 ساعة", value: "120" },
-    { label: "6 ساعات", value: "360" },
-    { label: "12 ساعة", value: "720" },
-    { label: "24 ساعة", value: "1440" }
+    {
+        label: "1 دقيقة",
+        value: "1"
+    },
+    {
+        label: "5 دقائق",
+        value: "5"
+    },
+    {
+        label: "10 دقائق",
+        value: "10"
+    },
+    {
+        label: "15 دقيقة",
+        value: "15"
+    },
+    {
+        label: "30 دقيقة",
+        value: "30"
+    },
+    {
+        label: "1 ساعة",
+        value: "60"
+    },
+    {
+        label: "2 ساعة",
+        value: "120"
+    },
+    {
+        label: "6 ساعات",
+        value: "360"
+    },
+    {
+        label: "12 ساعة",
+        value: "720"
+    },
+    {
+        label: "24 ساعة",
+        value: "1440"
+    }
 ];
 
 // ==================================================
@@ -196,23 +233,33 @@ function saveConfig() {
 }
 
 // ==================================================
-// TEMPORARY ROLE DURATION
+// ROLE DURATION
 // ==================================================
 
 function parseRoleDuration(input) {
-    if (!input) return null;
+    if (!input) {
+        return null;
+    }
 
-    const match = String(input)
+    const value = String(input)
         .toLowerCase()
-        .trim()
-        .match(/^(\d+)(m|h|d|w|y)$/);
+        .trim();
 
-    if (!match) return null;
+    const match = value.match(
+        /^(\d+)(m|h|d|w|y)$/
+    );
+
+    if (!match) {
+        return null;
+    }
 
     const amount = Number(match[1]);
     const unit = match[2];
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (
+        !Number.isFinite(amount) ||
+        amount <= 0
+    ) {
         return null;
     }
 
@@ -223,36 +270,25 @@ function parseRoleDuration(input) {
     const WEEK = 7 * DAY;
     const YEAR = 365 * DAY;
 
-    let milliseconds;
+    let milliseconds = 0;
 
-    switch (unit) {
-        case "m":
-            milliseconds = amount * MINUTE;
-            break;
-
-        case "h":
-            milliseconds = amount * HOUR;
-            break;
-
-        case "d":
-            milliseconds = amount * DAY;
-            break;
-
-        case "w":
-            milliseconds = amount * WEEK;
-            break;
-
-        case "y":
-            milliseconds = amount * YEAR;
-            break;
-
-        default:
-            return null;
+    if (unit === "m") {
+        milliseconds = amount * MINUTE;
+    } else if (unit === "h") {
+        milliseconds = amount * HOUR;
+    } else if (unit === "d") {
+        milliseconds = amount * DAY;
+    } else if (unit === "w") {
+        milliseconds = amount * WEEK;
+    } else if (unit === "y") {
+        milliseconds = amount * YEAR;
+    } else {
+        return null;
     }
 
     return {
-        milliseconds,
-        text: `${amount}${unit}`
+        milliseconds: milliseconds,
+        text: String(amount) + unit
     };
 }
 
@@ -267,7 +303,11 @@ async function addTemporaryRole(
     durationText,
     executor
 ) {
-    if (!guild || !member || !role) {
+    if (
+        !guild ||
+        !member ||
+        !role
+    ) {
         return {
             success: false,
             message: "❌ البيانات غير صحيحة."
@@ -277,7 +317,8 @@ async function addTemporaryRole(
     if (role.id === guild.id) {
         return {
             success: false,
-            message: "❌ لا يمكن إعطاء رتبة @everyone."
+            message:
+                "❌ لا يمكن إعطاء رتبة @everyone."
         };
     }
 
@@ -298,7 +339,9 @@ async function addTemporaryRole(
         };
     }
 
-    const duration = parseRoleDuration(durationText);
+    const duration = parseRoleDuration(
+        durationText
+    );
 
     if (!duration) {
         return {
@@ -317,28 +360,33 @@ async function addTemporaryRole(
     try {
         await member.roles.add(
             role,
-            `Temporary role by ${executor.tag}`
+            "Temporary role"
         );
 
         const key =
-            `${guild.id}:${member.id}:${role.id}`;
+            guild.id +
+            ":" +
+            member.id +
+            ":" +
+            role.id;
 
         const expiresAt =
-            Date.now() + duration.milliseconds;
+            Date.now() +
+            duration.milliseconds;
 
         data.temporaryRoles[key] = {
             guildId: guild.id,
             userId: member.id,
             roleId: role.id,
-            expiresAt
+            expiresAt: expiresAt
         };
 
         saveData();
 
         return {
             success: true,
-            expiresAt,
-            duration
+            expiresAt: expiresAt,
+            duration: duration
         };
     } catch (err) {
         console.log(
@@ -361,12 +409,12 @@ async function addTemporaryRole(
 
 async function removeExpiredRoles() {
     const now = Date.now();
-
     let changed = false;
 
-    for (const [key, tempRole] of Object.entries(
-        data.temporaryRoles
-    )) {
+    for (
+        const [key, tempRole]
+        of Object.entries(data.temporaryRoles)
+    ) {
         if (
             !tempRole ||
             !tempRole.expiresAt
@@ -415,18 +463,22 @@ async function removeExpiredRoles() {
                 role &&
                 member.roles.cache.has(role.id)
             ) {
-                await member.roles.remove(
-                    role,
-                    "Temporary role expired"
-                );
+                if (role.editable) {
+                    await member.roles.remove(
+                        role,
+                        "Temporary role expired"
+                    );
+                }
             }
 
             delete data.temporaryRoles[key];
-
             changed = true;
 
             console.log(
-                `⏰ Removed expired role ${tempRole.roleId} from ${member.user.tag}`
+                "⏰ Removed expired role " +
+                tempRole.roleId +
+                " from " +
+                member.user.tag
             );
         } catch (err) {
             console.log(
@@ -450,8 +502,15 @@ function createPostId(
     userId
 ) {
     return (
-        `${guildId}_${userId}_${Date.now()}_` +
-        `${Math.floor(Math.random() * 100000)}`
+        guildId +
+        "_" +
+        userId +
+        "_" +
+        Date.now() +
+        "_" +
+        Math.floor(
+            Math.random() * 100000
+        )
     );
 }
 
@@ -470,10 +529,12 @@ function getGuildData(guildId) {
 
     if (
         !Array.isArray(
-            data.guilds[guildId].exchangeChannels
+            data.guilds[guildId]
+                .exchangeChannels
         )
     ) {
-        data.guilds[guildId].exchangeChannels = [];
+        data.guilds[guildId]
+            .exchangeChannels = [];
     }
 
     return data.guilds[guildId];
@@ -487,12 +548,12 @@ function getUserPosts(
     guildId,
     userId
 ) {
-    return Object.values(data.posts).filter(
-        post =>
+    return Object.values(data.posts)
+        .filter(post =>
             post &&
             post.guildId === guildId &&
             post.userId === userId
-    );
+        );
 }
 
 // ==================================================
@@ -500,7 +561,9 @@ function getUserPosts(
 // ==================================================
 
 function getUserPostLimit(member) {
-    if (!member) return 0;
+    if (!member) {
+        return 0;
+    }
 
     if (
         member.id === OWNER_ID ||
@@ -515,16 +578,17 @@ function getUserPostLimit(member) {
 
     for (
         const [roleId, limit]
-        of Object.entries(ROLE_POST_LIMITS)
+        of Object.entries(
+            ROLE_POST_LIMITS
+        )
     ) {
         if (
             member.roles.cache.has(roleId)
         ) {
-            highestLimit =
-                Math.max(
-                    highestLimit,
-                    limit
-                );
+            highestLimit = Math.max(
+                highestLimit,
+                limit
+            );
         }
     }
 
@@ -542,8 +606,9 @@ function getActivePostsCount(
     return getUserPosts(
         guildId,
         userId
-    ).filter(
-        post => post.active
+    ).filter(post =>
+        post &&
+        post.active === true
     ).length;
 }
 
@@ -560,7 +625,9 @@ async function getGuildMember(
             guildId
         );
 
-    if (!guild) return null;
+    if (!guild) {
+        return null;
+    }
 
     const cached =
         guild.members.cache.get(
@@ -583,7 +650,9 @@ async function getGuildMember(
 async function getExchangeWebhook(
     channel
 ) {
-    if (!channel) return null;
+    if (!channel) {
+        return null;
+    }
 
     try {
         const webhooks =
@@ -603,13 +672,18 @@ async function getExchangeWebhook(
         const me =
             channel.guild.members.me;
 
+        if (!me) {
+            return null;
+        }
+
+        const permissions =
+            channel.permissionsFor(me);
+
         if (
-            !me ||
-            !channel
-                .permissionsFor(me)
-                .has(
-                    PermissionsBitField.Flags.ManageWebhooks
-                )
+            !permissions ||
+            !permissions.has(
+                PermissionsBitField.Flags.ManageWebhooks
+            )
         ) {
             return null;
         }
@@ -653,9 +727,11 @@ async function getUserDisplayName(
             .fetch(userId)
             .catch(() => null);
 
-    return user
-        ? user.username
-        : "User";
+    if (user) {
+        return user.username;
+    }
+
+    return "User";
 }
 
 // ==================================================
@@ -698,10 +774,8 @@ async function publishPost(post) {
     }
 
     if (
-        channel.type !==
-            ChannelType.GuildText &&
-        channel.type !==
-            ChannelType.GuildAnnouncement
+        channel.type !== ChannelType.GuildText &&
+        channel.type !== ChannelType.GuildAnnouncement
     ) {
         return {
             success: false,
@@ -733,8 +807,7 @@ async function publishPost(post) {
     }
 
     const content =
-        post.content &&
-        post.content.trim().length > 0
+        typeof post.content === "string"
             ? post.content.trim()
             : "";
 
@@ -774,7 +847,9 @@ async function publishPost(post) {
     let finalContent = content;
 
     finalContent +=
-        `\n\nتواصل مع <@${post.userId}> للعمل المنشور`;
+        "\n\nتواصل مع <@" +
+        post.userId +
+        "> للعمل المنشور";
 
     const files =
         attachments
@@ -793,7 +868,7 @@ async function publishPost(post) {
                     extension: "png",
                     size: 256
                 }),
-            files
+            files: files
         });
 
         post.lastPostedAt =
@@ -866,15 +941,12 @@ function createMainPanel(
 ) {
     const embed =
         new EmbedBuilder()
-            .setTitle(
-                "Auto Exchange"
-            )
+            .setTitle("Auto Exchange")
             .setDescription(
                 "اختر العملية التي تريد تنفيذها من القائمة بالأسفل."
             )
             .setFooter({
-                text:
-                    "Auto Exchange System"
+                text: "Auto Exchange System"
             });
 
     const options = [
@@ -965,18 +1037,19 @@ function createTimeMenu() {
 // ==================================================
 
 function createExchangeChannelMenu(
-    guildId
+    guildId,
+    postId
 ) {
     const guildData =
         getGuildData(guildId);
 
     const channels =
-        guildData.exchangeChannels.filter(
-            id =>
+        guildData.exchangeChannels
+            .filter(id =>
                 OWNER_EXCHANGE_CHANNEL_IDS.includes(
                     id
                 )
-        );
+            );
 
     const options = [];
 
@@ -1000,14 +1073,12 @@ function createExchangeChannelMenu(
                         )
                     )
                     .setDescription(
-                        `النشر في #${channel.name}`.slice(
-                            0,
-                            100
-                        )
+                        (
+                            "النشر في #" +
+                            channel.name
+                        ).slice(0, 100)
                     )
-                    .setValue(
-                        channel.id
-                    )
+                    .setValue(channel.id)
             );
         }
     }
@@ -1028,7 +1099,8 @@ function createExchangeChannelMenu(
     const menu =
         new StringSelectMenuBuilder()
             .setCustomId(
-                "exchange_select_channel"
+                "exchange_select_channel:" +
+                postId
             )
             .setPlaceholder(
                 "اختر روم النشر"
@@ -1042,7 +1114,7 @@ function createExchangeChannelMenu(
 }
 
 // ==================================================
-// OWNER CHANNEL SETUP MENU
+// OWNER CHANNEL SETUP
 // ==================================================
 
 function createOwnerChannelSetupMenu() {
@@ -1061,11 +1133,14 @@ function createOwnerChannelSetupMenu() {
             new StringSelectMenuOptionBuilder()
                 .setLabel(
                     channel
-                        ? `#${channel.name}`.slice(
-                              0,
-                              100
-                          )
-                        : `Channel ${id}`
+                        ? (
+                            "#" +
+                            channel.name
+                        ).slice(0, 100)
+                        : (
+                            "Channel " +
+                            id
+                        )
                 )
                 .setDescription(
                     id
@@ -1107,8 +1182,9 @@ function createUserPostsMenu(
         getUserPosts(
             guildId,
             userId
-        ).filter(
-            post => post && post.active
+        ).filter(post =>
+            post &&
+            post.active === true
         );
 
     const options =
@@ -1118,13 +1194,14 @@ function createUserPostsMenu(
                 (post, index) =>
                     new StringSelectMenuOptionBuilder()
                         .setLabel(
-                            `منشور ${index + 1}`
+                            "منشور " +
+                            (index + 1)
                         )
                         .setDescription(
-                            `روم: ${post.channelId}`.slice(
-                                0,
-                                100
-                            )
+                            (
+                                "روم: " +
+                                post.channelId
+                            ).slice(0, 100)
                         )
                         .setValue(
                             post.id
@@ -1196,7 +1273,7 @@ function createPostSlotMenu(
         options.push(
             new StringSelectMenuOptionBuilder()
                 .setLabel(
-                    `منشور ${i}`
+                    "منشور " + i
                 )
                 .setDescription(
                     "اختيار مساحة للمنشور"
@@ -1256,31 +1333,31 @@ async function handleDMPost(
     message
 ) {
     const waitingPost =
-        Object.values(
-            data.posts
-        ).find(
-            post =>
+        Object.values(data.posts)
+            .find(post =>
                 post &&
                 post.userId ===
                     message.author.id &&
-                post.waitingForPost ===
-                    true
-        );
+                post.waitingForPost === true
+            );
 
     if (!waitingPost) {
         return;
     }
 
     const content =
-        message.content?.trim() || "";
+        typeof message.content === "string"
+            ? message.content.trim()
+            : "";
 
     const attachments =
-        [
-            ...message.attachments.values()
-        ].map(att => ({
-            url: att.url,
-            name: att.name || "file"
-        }));
+        [...message.attachments.values()]
+            .map(att => ({
+                url: att.url,
+                name:
+                    att.name ||
+                    "file"
+            }));
 
     if (
         !content &&
@@ -1289,6 +1366,7 @@ async function handleDMPost(
         await message.reply(
             "❌ أرسل نص أو صورة أو ملف في الرسالة."
         );
+
         return;
     }
 
@@ -1310,7 +1388,7 @@ async function handleDMPost(
         waitingPost.intervalMinutes =
             Number(
                 config.postIntervalMinutes ||
-                    10
+                10
             );
     }
 
@@ -1322,11 +1400,15 @@ async function handleDMPost(
         );
 
     if (!result.success) {
+        waitingPost.active = false;
+        saveData();
+
         await message.reply(
             getPublishError(
                 result.reason
             )
         );
+
         return;
     }
 
@@ -1354,16 +1436,19 @@ function getPostInterval(
 }
 
 async function runAutoExchange() {
-    const now =
-        Date.now();
+    const now = Date.now();
 
     for (
         const post
         of Object.values(data.posts)
     ) {
-        if (!post) continue;
+        if (!post) {
+            continue;
+        }
 
-        if (!post.active) continue;
+        if (!post.active) {
+            continue;
+        }
 
         if (
             post.waitingForPost
@@ -1411,16 +1496,12 @@ async function runAutoExchange() {
 // ==================================================
 
 function cleanupWaitingPosts() {
-    const now =
-        Date.now();
-
+    const now = Date.now();
     let changed = false;
 
     for (
         const [id, post]
-        of Object.entries(
-            data.posts
-        )
+        of Object.entries(data.posts)
     ) {
         if (
             post &&
@@ -1447,7 +1528,12 @@ client.once(
     "clientReady",
     async () => {
         console.log(
-            `✅ Logged in as ${client.user.tag}`
+            "===================================="
+        );
+
+        console.log(
+            "✅ Logged in as " +
+            client.user.tag
         );
 
         client.user.setPresence({
@@ -1467,6 +1553,10 @@ client.once(
 
         console.log(
             "🔄 Auto Exchange loop started."
+        );
+
+        console.log(
+            "===================================="
         );
 
         setInterval(
@@ -1509,29 +1599,28 @@ client.on(
                 await handleDMPost(
                     message
                 );
+
                 return;
             }
+
+            const messageContent =
+                message.content.trim();
 
             // ==========================================
             // +رول
             // ==========================================
 
-            const messageContent =
-                message.content
-                    .trim();
-
             if (
-                messageContent
-                    .startsWith("+رول")
+                messageContent.startsWith(
+                    "+رول"
+                )
             ) {
                 const args =
                     messageContent.split(
                         /\s+/
                     );
 
-                if (
-                    args.length < 4
-                ) {
+                if (args.length < 4) {
                     await message.reply(
                         "❌ الاستخدام الصحيح:\n\n" +
                         "`+رول @العضو @الرتبة 1m`\n" +
@@ -1543,10 +1632,6 @@ client.on(
 
                     return;
                 }
-
-                // ======================================
-                // PERMISSION
-                // ======================================
 
                 const isOwner =
                     message.author.id ===
@@ -1568,10 +1653,6 @@ client.on(
                     return;
                 }
 
-                // ======================================
-                // TARGET
-                // ======================================
-
                 const target =
                     message.mentions.members.first();
 
@@ -1584,10 +1665,6 @@ client.on(
                     return;
                 }
 
-                // ======================================
-                // ROLE
-                // ======================================
-
                 const role =
                     message.mentions.roles.first();
 
@@ -1599,10 +1676,6 @@ client.on(
 
                     return;
                 }
-
-                // ======================================
-                // DURATION
-                // ======================================
 
                 const durationText =
                     args[args.length - 1];
@@ -1626,10 +1699,6 @@ client.on(
                     return;
                 }
 
-                // ======================================
-                // BOT MEMBER
-                // ======================================
-
                 const botMember =
                     message.guild.members.me;
 
@@ -1641,10 +1710,6 @@ client.on(
                     return;
                 }
 
-                // ======================================
-                // BOT HIERARCHY
-                // ======================================
-
                 if (
                     role.position >=
                     botMember.roles.highest.position
@@ -1655,10 +1720,6 @@ client.on(
 
                     return;
                 }
-
-                // ======================================
-                // ADMIN HIERARCHY
-                // ======================================
 
                 if (
                     !isOwner &&
@@ -1672,10 +1733,6 @@ client.on(
                     return;
                 }
 
-                // ======================================
-                // TARGET ALREADY HAS ROLE
-                // ======================================
-
                 if (
                     target.roles.cache.has(
                         role.id
@@ -1687,10 +1744,6 @@ client.on(
 
                     return;
                 }
-
-                // ======================================
-                // ADD ROLE
-                // ======================================
 
                 const result =
                     await addTemporaryRole(
@@ -1712,12 +1765,20 @@ client.on(
                 const expiresTimestamp =
                     Math.floor(
                         result.expiresAt /
-                            1000
+                        1000
                     );
 
                 await message.reply(
-                    `✅ تم إعطاء ${role} للعضو ${target} لمدة **${duration.text}**.\n` +
-                    `⏰ تنتهي: <t:${expiresTimestamp}:R>`
+                    "✅ تم إعطاء " +
+                    role +
+                    " للعضو " +
+                    target +
+                    " لمدة **" +
+                    duration.text +
+                    "**.\n" +
+                    "⏰ تنتهي: <t:" +
+                    expiresTimestamp +
+                    ":R>"
                 );
 
                 return;
@@ -1728,8 +1789,7 @@ client.on(
             // ==========================================
 
             if (
-                messageContent
-                    .toLowerCase() ===
+                messageContent.toLowerCase() ===
                 "!auto"
             ) {
                 await sendPanel(
@@ -1744,8 +1804,7 @@ client.on(
             // ==========================================
 
             if (
-                messageContent
-                    .toLowerCase() ===
+                messageContent.toLowerCase() ===
                 "!setupauto"
             ) {
                 if (
@@ -1803,6 +1862,16 @@ client.on(
                 const value =
                     interaction.values[0];
 
+                if (!interaction.guild) {
+                    await interaction.reply({
+                        content:
+                            "❌ هذا الأمر يعمل داخل السيرفر فقط.",
+                        ephemeral: true
+                    });
+
+                    return;
+                }
+
                 const member =
                     await getGuildMember(
                         interaction.guild.id,
@@ -1823,9 +1892,7 @@ client.on(
                 // START
                 // ======================================
 
-                if (
-                    value === "start"
-                ) {
+                if (value === "start") {
                     const limit =
                         getUserPostLimit(
                             member
@@ -1847,13 +1914,12 @@ client.on(
                         return;
                     }
 
-                    if (
-                        active >=
-                        limit
-                    ) {
+                    if (active >= limit) {
                         await interaction.reply({
                             content:
-                                `❌ وصلت للحد المسموح: **${limit} منشور**.`,
+                                "❌ وصلت للحد المسموح: **" +
+                                limit +
+                                " منشور**.",
                             ephemeral: true
                         });
 
@@ -1878,9 +1944,7 @@ client.on(
                 // STOP
                 // ======================================
 
-                if (
-                    value === "stop"
-                ) {
+                if (value === "stop") {
                     await interaction.reply({
                         content:
                             "اختر المنشور الذي تريد إيقافه:",
@@ -1900,22 +1964,17 @@ client.on(
                 // POSTS
                 // ======================================
 
-                if (
-                    value === "posts"
-                ) {
+                if (value === "posts") {
                     const posts =
                         getUserPosts(
                             interaction.guild.id,
                             interaction.user.id
-                        ).filter(
-                            post =>
-                                post &&
-                                post.active
+                        ).filter(post =>
+                            post &&
+                            post.active === true
                         );
 
-                    if (
-                        posts.length === 0
-                    ) {
+                    if (posts.length === 0) {
                         await interaction.reply({
                             content:
                                 "📭 ليس لديك منشورات نشطة.",
@@ -1928,7 +1987,11 @@ client.on(
                     const lines =
                         posts.map(
                             (post, index) =>
-                                `**${index + 1}.** <#${post.channelId}>`
+                                "**" +
+                                (index + 1) +
+                                ".** <#" +
+                                post.channelId +
+                                ">"
                         );
 
                     await interaction.reply({
@@ -1945,9 +2008,7 @@ client.on(
                 // TIME
                 // ======================================
 
-                if (
-                    value === "time"
-                ) {
+                if (value === "time") {
                     if (
                         interaction.user.id !==
                         OWNER_ID
@@ -2001,9 +2062,7 @@ client.on(
                     );
 
                 if (
-                    !Number.isFinite(
-                        minutes
-                    ) ||
+                    !Number.isFinite(minutes) ||
                     minutes <= 0
                 ) {
                     await interaction.reply({
@@ -2038,7 +2097,9 @@ client.on(
 
                 await interaction.update({
                     content:
-                        `✅ تم تغيير مدة إعادة النشر إلى **${minutes} دقيقة**.`,
+                        "✅ تم تغيير مدة إعادة النشر إلى **" +
+                        minutes +
+                        " دقيقة**.",
                     components: []
                 });
 
@@ -2086,7 +2147,9 @@ client.on(
 
                 await interaction.update({
                     content:
-                        `✅ تم حفظ **${selected.length}** روم لـ Auto Exchange.`,
+                        "✅ تم حفظ **" +
+                        selected.length +
+                        "** روم لـ Auto Exchange.",
                     components: []
                 });
 
@@ -2101,8 +2164,11 @@ client.on(
                 interaction.customId ===
                 "post_slot_select"
             ) {
+                const selectedSlot =
+                    interaction.values[0];
+
                 if (
-                    interaction.values[0] ===
+                    selectedSlot ===
                     "none"
                 ) {
                     await interaction.reply({
@@ -2141,10 +2207,7 @@ client.on(
                         interaction.user.id
                     );
 
-                if (
-                    active >=
-                    limit
-                ) {
+                if (active >= limit) {
                     await interaction.reply({
                         content:
                             "❌ وصلت للحد المسموح.",
@@ -2159,9 +2222,16 @@ client.on(
                         interaction.guild.id
                     );
 
-                if (
+                const allowedChannels =
                     guildData.exchangeChannels
-                        .length === 0
+                        .filter(id =>
+                            OWNER_EXCHANGE_CHANNEL_IDS.includes(
+                                id
+                            )
+                        );
+
+                if (
+                    allowedChannels.length === 0
                 ) {
                     await interaction.reply({
                         content:
@@ -2187,25 +2257,34 @@ client.on(
                     userId:
                         interaction.user.id,
 
-                    channelId: null,
+                    slot:
+                        Number(selectedSlot),
 
-                    content: "",
+                    channelId:
+                        null,
 
-                    attachments: [],
+                    content:
+                        "",
 
-                    active: false,
+                    attachments:
+                        [],
 
-                    waitingForPost: false,
+                    active:
+                        false,
+
+                    waitingForPost:
+                        false,
 
                     createdAt:
                         Date.now(),
 
-                    lastPostedAt: 0,
+                    lastPostedAt:
+                        0,
 
                     intervalMinutes:
                         Number(
                             config.postIntervalMinutes ||
-                                10
+                            10
                         )
                 };
 
@@ -2216,7 +2295,8 @@ client.on(
                         "اختر روم النشر:",
                     components: [
                         createExchangeChannelMenu(
-                            interaction.guild.id
+                            interaction.guild.id,
+                            postId
                         )
                     ]
                 });
@@ -2229,9 +2309,15 @@ client.on(
             // ==========================================
 
             if (
-                interaction.customId ===
-                "exchange_select_channel"
+                interaction.customId.startsWith(
+                    "exchange_select_channel:"
+                )
             ) {
+                const postId =
+                    interaction.customId.split(
+                        ":"
+                    )[1];
+
                 const channelId =
                     interaction.values[0];
 
@@ -2263,24 +2349,57 @@ client.on(
                 }
 
                 const post =
-                    Object.values(
-                        data.posts
-                    ).find(
-                        p =>
-                            p &&
-                            p.userId ===
-                                interaction.user.id &&
-                            !p.channelId &&
-                            p.waitingForPost ===
-                                false &&
-                            p.active ===
-                                false
-                    );
+                    data.posts[postId];
 
                 if (!post) {
                     await interaction.reply({
                         content:
-                            "❌ لم أجد منشورًا بانتظار اختيار الروم.",
+                            "❌ المنشور غير موجود.",
+                        ephemeral: true
+                    });
+
+                    return;
+                }
+
+                if (
+                    post.userId !==
+                    interaction.user.id
+                ) {
+                    await interaction.reply({
+                        content:
+                            "❌ هذا المنشور ليس لك.",
+                        ephemeral: true
+                    });
+
+                    return;
+                }
+
+                if (
+                    post.active ||
+                    post.waitingForPost
+                ) {
+                    await interaction.reply({
+                        content:
+                            "❌ هذا المنشور قيد الاستخدام بالفعل.",
+                        ephemeral: true
+                    });
+
+                    return;
+                }
+
+                const guildData =
+                    getGuildData(
+                        interaction.guild.id
+                    );
+
+                if (
+                    !guildData.exchangeChannels.includes(
+                        channelId
+                    )
+                ) {
+                    await interaction.reply({
+                        content:
+                            "❌ هذه الروم لم يحددها المالك ضمن رومات Auto Exchange.",
                         ephemeral: true
                     });
 
@@ -2296,6 +2415,21 @@ client.on(
                     await interaction.reply({
                         content:
                             "❌ الروم غير موجودة في هذا السيرفر.",
+                        ephemeral: true
+                    });
+
+                    return;
+                }
+
+                if (
+                    channel.type !==
+                        ChannelType.GuildText &&
+                    channel.type !==
+                        ChannelType.GuildAnnouncement
+                ) {
+                    await interaction.reply({
+                        content:
+                            "❌ هذه ليست روم نصية.",
                         ephemeral: true
                     });
 
@@ -2367,9 +2501,7 @@ client.on(
                 }
 
                 const post =
-                    data.posts[
-                        postId
-                    ];
+                    data.posts[postId];
 
                 if (!post) {
                     await interaction.reply({
@@ -2497,6 +2629,10 @@ if (!TOKEN) {
         "❌ DISCORD TOKEN IS MISSING!"
     );
 
+    console.log(
+        "ضع التوكن في config.json أو متغير DISCORD_TOKEN."
+    );
+
     process.exit(1);
 }
 
@@ -2512,4 +2648,3 @@ client.login(TOKEN)
             err.message
         );
     });
-```
