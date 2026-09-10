@@ -34,10 +34,15 @@ const DEFAULT_CONFIG = {
     postIntervalMinutes: 10
 };
 
+// ==================================================
+// DEFAULT DATA
+// ==================================================
+
 const DEFAULT_DATA = {
     guilds: {},
     posts: {},
-    temporaryRoles: {}
+    temporaryRoles: {},
+    autoTargets: {}
 };
 
 // ==================================================
@@ -129,8 +134,15 @@ function saveJSON(file, object) {
 // LOAD DATA
 // ==================================================
 
-let config = loadJSON(CONFIG_FILE, DEFAULT_CONFIG);
-let data = loadJSON(DATA_FILE, DEFAULT_DATA);
+let config = loadJSON(
+    CONFIG_FILE,
+    DEFAULT_CONFIG
+);
+
+let data = loadJSON(
+    DATA_FILE,
+    DEFAULT_DATA
+);
 
 if (
     !config ||
@@ -172,6 +184,14 @@ if (
     data.temporaryRoles = {};
 }
 
+if (
+    !data.autoTargets ||
+    typeof data.autoTargets !== "object" ||
+    Array.isArray(data.autoTargets)
+) {
+    data.autoTargets = {};
+}
+
 // ==================================================
 // TOKEN / OWNER
 // ==================================================
@@ -190,6 +210,13 @@ const OWNER_ID =
 // ==================================================
 // CONSTANTS
 // ==================================================
+
+/*
+ * هذه الرومات مخصصة للوحة Auto Exchange.
+ *
+ * مهم:
+ * أمر /auto الجديد لن ينشر داخلها.
+ */
 
 const ALLOWED_EXCHANGE_CHANNELS = [
     "1547162535164379146",
@@ -292,7 +319,10 @@ let backgroundStarted = false;
 // ==================================================
 
 function saveData() {
-    saveJSON(DATA_FILE, data);
+    saveJSON(
+        DATA_FILE,
+        data
+    );
 }
 
 function getGuildData(guildId) {
@@ -306,19 +336,25 @@ function getGuildData(guildId) {
         };
     }
 
-    const guildData = data.guilds[guildId];
+    const guildData =
+        data.guilds[guildId];
 
     if (!Array.isArray(guildData.exchangeChannels)) {
         guildData.exchangeChannels = [];
     }
 
     guildData.exchangeChannels =
-        guildData.exchangeChannels.filter(id =>
-            ALLOWED_EXCHANGE_CHANNELS.includes(String(id))
+        guildData.exchangeChannels.filter(
+            id =>
+                ALLOWED_EXCHANGE_CHANNELS.includes(
+                    String(id)
+                )
         );
 
     const interval =
-        Number(guildData.postIntervalMinutes);
+        Number(
+            guildData.postIntervalMinutes
+        );
 
     if (
         !Number.isFinite(interval) ||
@@ -444,7 +480,9 @@ function getActivePostsForUser(
     guildId,
     userId
 ) {
-    return Object.values(data.posts).filter(
+    return Object.values(
+        data.posts
+    ).filter(
         post =>
             post &&
             String(post.guildId) === String(guildId) &&
@@ -652,7 +690,7 @@ function getActiveExchangeChannels(guild) {
     ) {
         if (
             !ALLOWED_EXCHANGE_CHANNELS.includes(
-                channelId
+                String(channelId)
             )
         ) {
             continue;
@@ -690,7 +728,7 @@ function createPersistentAutoPanel(guild) {
             .filter(
                 id =>
                     ALLOWED_EXCHANGE_CHANNELS.includes(
-                        id
+                        String(id)
                     )
             )
             .map(
@@ -738,10 +776,6 @@ function createPersistentAutoPanel(guild) {
                 text:
                     "Auto Exchange • لوحة ثابتة"
             });
-
-    // لا نضع تغيير المدة داخل اللوحة العامة
-    // لأن الرسالة نفسها يراها جميع الأعضاء.
-    // التغيير أصبح من خلال /autotime للـOwner فقط.
 
     const options = [
         new StringSelectMenuOptionBuilder()
@@ -1017,66 +1051,6 @@ function createPostSlotMenu(
             )
             .setPlaceholder(
                 "اختر رقم المنشور..."
-            )
-            .addOptions(
-                options
-            );
-
-    return new ActionRowBuilder()
-        .addComponents(
-            menu
-        );
-}
-
-// ==================================================
-// CHANNEL MENU
-// ==================================================
-
-function createExchangeChannelMenu(
-    guild,
-    postId
-) {
-    const channels =
-        getActiveExchangeChannels(
-            guild
-        );
-
-    if (
-        channels.length === 0
-    ) {
-        return null;
-    }
-
-    const options =
-        channels
-            .slice(0, 25)
-            .map(
-                channel =>
-                    new StringSelectMenuOptionBuilder()
-                        .setLabel(
-                            channel.name.slice(
-                                0,
-                                100
-                            )
-                        )
-                        .setDescription(
-                            "اختيار هذا الروم للنشر"
-                        )
-                        .setValue(
-                            `exchange_select_channel:${postId}:${channel.id}`
-                        )
-                        .setEmoji(
-                            "📢"
-                        )
-            );
-
-    const menu =
-        new StringSelectMenuBuilder()
-            .setCustomId(
-                "exchange_channel_menu"
-            )
-            .setPlaceholder(
-                "اختر روم النشر..."
             )
             .addOptions(
                 options
@@ -1407,22 +1381,15 @@ async function publishPost(
             };
         }
 
-        const guildData =
-            getGuildData(
-                guild.id
-            );
-
-        if (
-            !guildData.exchangeChannels.includes(
-                post.channelId
-            )
-        ) {
-            return {
-                success: false,
-                error:
-                    "CHANNEL_NOT_ENABLED"
-            };
-        }
+        /*
+         * مهم:
+         *
+         * /auto الجديد لا يعتمد على
+         * ALLOWED_EXCHANGE_CHANNELS.
+         *
+         * لذلك لا نفحص هنا أن الروم موجود
+         * داخل exchangeChannels.
+         */
 
         const channel =
             guild.channels.cache.get(
@@ -1445,6 +1412,24 @@ async function publishPost(
                 success: false,
                 error:
                     "INVALID_CHANNEL"
+            };
+        }
+
+        /*
+         * حماية إضافية:
+         * لا نسمح بنشر /auto داخل
+         * رومات التبادل المحددة.
+         */
+
+        if (
+            ALLOWED_EXCHANGE_CHANNELS.includes(
+                String(post.channelId)
+            )
+        ) {
+            return {
+                success: false,
+                error:
+                    "CHANNEL_NOT_ENABLED"
             };
         }
 
@@ -1474,10 +1459,13 @@ async function publishPost(
         if (
             !permissions ||
             !permissions.has(
-                PermissionsBitField.Flags.ManageWebhooks
+                PermissionsBitField.Flags.ViewChannel
             ) ||
             !permissions.has(
                 PermissionsBitField.Flags.SendMessages
+            ) ||
+            !permissions.has(
+                PermissionsBitField.Flags.ManageWebhooks
             )
         ) {
             return {
@@ -1796,8 +1784,6 @@ async function runAutoExchange() {
                     Date.now();
 
                 if (
-                    result.error ===
-                    "CHANNEL_NOT_ENABLED" ||
                     result.error ===
                     "CHANNEL_NOT_FOUND" ||
                     result.error ===
@@ -2246,7 +2232,8 @@ async function removeExpiredRoles() {
                 userId
             ];
 
-            changed = true;
+            changed =
+                true;
 
             continue;
         }
@@ -2262,7 +2249,9 @@ async function removeExpiredRoles() {
                 !roleData.roleId ||
                 !roleData.expiresAt
             ) {
-                changed = true;
+                changed =
+                    true;
+
                 continue;
             }
 
@@ -2276,7 +2265,9 @@ async function removeExpiredRoles() {
                     expiresAt
                 )
             ) {
-                changed = true;
+                changed =
+                    true;
+
                 continue;
             }
 
@@ -2296,7 +2287,9 @@ async function removeExpiredRoles() {
                 );
 
             if (!guild) {
-                changed = true;
+                changed =
+                    true;
+
                 continue;
             }
 
@@ -2312,7 +2305,9 @@ async function removeExpiredRoles() {
                     );
 
                 if (!role) {
-                    changed = true;
+                    changed =
+                        true;
+
                     continue;
                 }
 
@@ -2354,7 +2349,9 @@ async function removeExpiredRoles() {
                     roleData.addedByBot ===
                     false
                 ) {
-                    changed = true;
+                    changed =
+                        true;
+
                     continue;
                 }
 
@@ -2369,7 +2366,8 @@ async function removeExpiredRoles() {
                     );
                 }
 
-                changed = true;
+                changed =
+                    true;
             } catch (error) {
                 console.error(
                     `Error removing expired role ${roleData.roleId} from ${userId}:`
@@ -2388,7 +2386,8 @@ async function removeExpiredRoles() {
                         10011
                     )
                 ) {
-                    changed = true;
+                    changed =
+                        true;
                 } else {
                     remaining.push(
                         roleData
@@ -2411,7 +2410,8 @@ async function removeExpiredRoles() {
                 userId
             ];
 
-            changed = true;
+            changed =
+                true;
         }
     }
 
@@ -2444,7 +2444,8 @@ function cleanupData() {
                 postId
             ];
 
-            changed = true;
+            changed =
+                true;
 
             continue;
         }
@@ -2475,7 +2476,8 @@ function cleanupData() {
                 postId
             ];
 
-            changed = true;
+            changed =
+                true;
         }
     }
 
@@ -2497,7 +2499,8 @@ function cleanupData() {
                 postId
             ];
 
-            changed = true;
+            changed =
+                true;
         }
     }
 
@@ -2515,8 +2518,11 @@ function cleanupData() {
                 post.messageIds
             )
         ) {
-            post.messageIds = [];
-            changed = true;
+            post.messageIds =
+                [];
+
+            changed =
+                true;
         }
 
         if (
@@ -2524,8 +2530,11 @@ function cleanupData() {
                 post.attachments
             )
         ) {
-            post.attachments = [];
-            changed = true;
+            post.attachments =
+                [];
+
+            changed =
+                true;
         }
 
         if (
@@ -2537,7 +2546,43 @@ function cleanupData() {
                     post.publishCount
                 ) || 0;
 
-            changed = true;
+            changed =
+                true;
+        }
+    }
+
+    /*
+     * تنظيف جلسات /auto القديمة
+     */
+
+    if (
+        data.autoTargets &&
+        typeof data.autoTargets === "object"
+    ) {
+        for (
+            const [
+                userId,
+                target
+            ] of Object.entries(
+                data.autoTargets
+            )
+        ) {
+            if (
+                !target ||
+                !target.createdAt ||
+                now -
+                Number(target.createdAt) >
+                15 *
+                60 *
+                1000
+            ) {
+                delete data.autoTargets[
+                    userId
+                ];
+
+                changed =
+                    true;
+            }
         }
     }
 
@@ -2776,9 +2821,19 @@ function buildSlashCommands() {
                         )
             );
 
+    const auto =
+        new SlashCommandBuilder()
+            .setName(
+                "auto"
+            )
+            .setDescription(
+                "إنشاء منشور في الروم الحالي"
+            );
+
     return [
         setupAuto.toJSON(),
-        autoTime.toJSON()
+        autoTime.toJSON(),
+        auto.toJSON()
     ];
 }
 
@@ -2855,7 +2910,7 @@ async function handleSetupAutoInteraction(
                     "",
                     "بعد الحفظ سيقوم البوت بوضع لوحة ثابتة داخل الرومات.",
                     "",
-                    "⚠️ لن يحتاج الأعضاء إلى كتابة `/auto` أو أي أمر آخر."
+                    "⚠️ لن يحتاج الأعضاء إلى كتابة `/auto` أو أي أمر آخر لاستخدام لوحة التبادل."
                 ].join("\n")
             );
 
@@ -2959,6 +3014,224 @@ async function handleAutoTimeInteraction(
 }
 
 // ==================================================
+// HANDLE /AUTO
+// ==================================================
+
+async function handleAutoInteraction(
+    interaction
+) {
+    if (!interaction.guild) {
+        await interaction.reply({
+            content:
+                "❌ هذا الأمر يعمل داخل السيرفر فقط.",
+            ephemeral:
+                true
+        });
+
+        return;
+    }
+
+    const channel =
+        interaction.channel;
+
+    if (
+        !channel ||
+        channel.type !==
+        ChannelType.GuildText
+    ) {
+        await interaction.reply({
+            content:
+                "❌ يجب استخدام `/auto` داخل روم نصي.",
+            ephemeral:
+                true
+        });
+
+        return;
+    }
+
+    /*
+     * منع /auto داخل رومات التبادل.
+     */
+
+    if (
+        ALLOWED_EXCHANGE_CHANNELS.includes(
+            String(channel.id)
+        )
+    ) {
+        await interaction.reply({
+            content:
+                [
+                    "❌ لا يمكنك استخدام `/auto` داخل رومات التبادل.",
+                    "",
+                    "📌 استخدم `/auto` داخل الروم الذي تريد أن يظهر فيه المنشور."
+                ].join("\n"),
+            ephemeral:
+                true
+        });
+
+        return;
+    }
+
+    const member =
+        interaction.member;
+
+    const limit =
+        getRolePostLimit(
+            member
+        );
+
+    if (
+        limit <= 0
+    ) {
+        await interaction.reply({
+            content:
+                "❌ ليس لديك رتبة تسمح لك باستخدام Auto Exchange.",
+            ephemeral:
+                true
+        });
+
+        return;
+    }
+
+    const activePosts =
+        getActivePostsForUser(
+            interaction.guild.id,
+            interaction.user.id
+        );
+
+    if (
+        activePosts.length >=
+        limit
+    ) {
+        await interaction.reply({
+            content:
+                `❌ وصلت للحد الأقصى من المنشورات. الحد الخاص بك: **${limit}**`,
+            ephemeral:
+                true
+        });
+
+        return;
+    }
+
+    if (
+        hasPendingDMPost(
+            interaction.user.id
+        )
+    ) {
+        await interaction.reply({
+            content:
+                [
+                    "❌ لديك منشور بالفعل ينتظر المحتوى في الخاص.",
+                    "",
+                    "📨 أرسل محتوى المنشور الموجود في الخاص أولًا."
+                ].join("\n"),
+            ephemeral:
+                true
+        });
+
+        return;
+    }
+
+    const botMember =
+        interaction.guild.members.me ||
+        await interaction.guild.members
+            .fetch(
+                client.user.id
+            )
+            .catch(
+                () => null
+            );
+
+    if (!botMember) {
+        await interaction.reply({
+            content:
+                "❌ لم أستطع التحقق من صلاحيات البوت.",
+            ephemeral:
+                true
+        });
+
+        return;
+    }
+
+    const permissions =
+        channel.permissionsFor(
+            botMember
+        );
+
+    if (
+        !permissions ||
+        !permissions.has(
+            PermissionsBitField.Flags.ViewChannel
+        ) ||
+        !permissions.has(
+            PermissionsBitField.Flags.SendMessages
+        ) ||
+        !permissions.has(
+            PermissionsBitField.Flags.ManageWebhooks
+        )
+    ) {
+        await interaction.reply({
+            content:
+                [
+                    "❌ البوت لا يملك الصلاحيات المطلوبة في هذا الروم.",
+                    "",
+                    "يحتاج:",
+                    "• View Channel",
+                    "• Send Messages",
+                    "• Manage Webhooks"
+                ].join("\n"),
+            ephemeral:
+                true
+        });
+
+        return;
+    }
+
+    /*
+     * نحفظ مكان النشر =
+     * نفس الروم الذي استُخدم فيه /auto
+     */
+
+    data.autoTargets[
+        interaction.user.id
+    ] = {
+        guildId:
+            interaction.guild.id,
+
+        channelId:
+            channel.id,
+
+        channelName:
+            channel.name,
+
+        createdAt:
+            Date.now()
+    };
+
+    saveData();
+
+    await interaction.reply({
+        content:
+            [
+                `📢 سيتم نشر المنشور داخل: <#${channel.id}>`,
+                "",
+                "اختر رقم المنشور الذي تريد إنشاءه:"
+            ].join("\n"),
+
+        components: [
+            createPostSlotMenu(
+                limit,
+                interaction.guild.id,
+                interaction.user.id
+            )
+        ],
+
+        ephemeral:
+            true
+    });
+}
+
+// ==================================================
 // INTERACTION HANDLER
 // ==================================================
 
@@ -2989,6 +3262,17 @@ client.on(
                     "autotime"
                 ) {
                     await handleAutoTimeInteraction(
+                        interaction
+                    );
+
+                    return;
+                }
+
+                if (
+                    interaction.commandName ===
+                    "auto"
+                ) {
+                    await handleAutoInteraction(
                         interaction
                     );
 
@@ -3056,7 +3340,7 @@ client.on(
                     interaction.values[0];
 
                 // ==================================================
-                // START POST
+                // START POST FROM PANEL
                 // ==================================================
 
                 if (
@@ -3084,57 +3368,25 @@ client.on(
                         return;
                     }
 
-                    const activePosts =
-                        getActivePostsForUser(
-                            interaction.guild.id,
-                            interaction.user.id
-                        );
-
-                    if (
-                        activePosts.length >=
-                        limit
-                    ) {
-                        await interaction.reply({
-                            content:
-                                `❌ وصلت للحد الأقصى من المنشورات. الحد الخاص بك: **${limit}**`,
-                            ephemeral:
-                                true
-                        });
-
-                        return;
-                    }
-
-                    if (
-                        hasPendingDMPost(
-                            interaction.user.id
-                        )
-                    ) {
-                        await interaction.reply({
-                            content:
-                                [
-                                    "❌ لديك منشور بالفعل ينتظر المحتوى في الخاص.",
-                                    "",
-                                    "📨 أرسل محتوى المنشور الموجود في الخاص أولًا."
-                                ].join("\n"),
-                            ephemeral:
-                                true
-                        });
-
-                        return;
-                    }
+                    /*
+                     * اللوحة القديمة تبقى موجودة في رومات التبادل.
+                     *
+                     * لكن لا نطلب اختيار روم من هنا.
+                     *
+                     * سنجعل النشر يتم فقط باستخدام /auto.
+                     */
 
                     await interaction.reply({
                         content:
-                            "📢 اختر رقم المنشور الذي تريد إنشاءه:",
-
-                        components: [
-                            createPostSlotMenu(
-                                limit,
-                                interaction.guild.id,
-                                interaction.user.id
-                            )
-                        ],
-
+                            [
+                                "📢 لإنشاء منشور جديد استخدم:",
+                                "",
+                                "`/auto`",
+                                "",
+                                "📌 اكتب `/auto` داخل الروم الذي تريد أن يظهر فيه المنشور.",
+                                "",
+                                "⚠️ لا تستخدم `/auto` داخل رومات التبادل الموجودة في لوحة النظام."
+                            ].join("\n"),
                         ephemeral:
                             true
                     });
@@ -3170,11 +3422,9 @@ client.on(
                     await interaction.reply({
                         content:
                             "🛑 اختر المنشور الذي تريد إيقافه:",
-
                         components: [
                             row
                         ],
-
                         ephemeral:
                             true
                     });
@@ -3259,35 +3509,13 @@ client.on(
                     await interaction.update({
                         content:
                             "❌ هذا النظام يعمل داخل السيرفر فقط.",
+
                         components:
                             []
                     });
 
                     return;
                 }
-
-                const guildData =
-                    getGuildData(
-                        interaction.guild.id
-                    );
-
-                if (
-                    !guildData.setupCompleted
-                ) {
-                    await interaction.update({
-                        content:
-                            "❌ Auto Exchange غير مفعل.",
-                        components:
-                            []
-                    });
-
-                    return;
-                }
-
-                const slot =
-                    Number(
-                        interaction.values[0]
-                    );
 
                 const member =
                     interaction.member;
@@ -3295,6 +3523,11 @@ client.on(
                 const limit =
                     getRolePostLimit(
                         member
+                    );
+
+                const slot =
+                    Number(
+                        interaction.values[0]
                     );
 
                 if (
@@ -3305,6 +3538,7 @@ client.on(
                     await interaction.update({
                         content:
                             "❌ رقم المنشور غير صالح.",
+
                         components:
                             []
                     });
@@ -3330,6 +3564,7 @@ client.on(
                     await interaction.update({
                         content:
                             "❌ هذا رقم المنشور مستخدم بالفعل.",
+
                         components:
                             []
                     });
@@ -3357,18 +3592,169 @@ client.on(
                     return;
                 }
 
-                const channels =
-                    getActiveExchangeChannels(
-                        interaction.guild
+                /*
+                 * نأخذ الروم الذي تم فيه استخدام /auto
+                 */
+
+                const autoTarget =
+                    data.autoTargets[
+                        interaction.user.id
+                    ];
+
+                if (!autoTarget) {
+                    await interaction.update({
+                        content:
+                            [
+                                "❌ لم يتم تحديد روم النشر.",
+                                "",
+                                "استخدم `/auto` داخل الروم الذي تريد النشر فيه."
+                            ].join("\n"),
+
+                        components:
+                            []
+                    });
+
+                    return;
+                }
+
+                if (
+                    String(
+                        autoTarget.guildId
+                    ) !==
+                    String(
+                        interaction.guild.id
+                    )
+                ) {
+                    delete data.autoTargets[
+                        interaction.user.id
+                    ];
+
+                    saveData();
+
+                    await interaction.update({
+                        content:
+                            "❌ جلسة `/auto` غير صالحة. استخدم الأمر مرة أخرى.",
+
+                        components:
+                            []
+                    });
+
+                    return;
+                }
+
+                const targetChannel =
+                    interaction.guild.channels.cache.get(
+                        autoTarget.channelId
                     );
 
                 if (
-                    channels.length ===
-                    0
+                    !targetChannel ||
+                    targetChannel.type !==
+                    ChannelType.GuildText
+                ) {
+                    delete data.autoTargets[
+                        interaction.user.id
+                    ];
+
+                    saveData();
+
+                    await interaction.update({
+                        content:
+                            "❌ الروم الذي استخدمت فيه `/auto` غير موجود.",
+
+                        components:
+                            []
+                    });
+
+                    return;
+                }
+
+                /*
+                 * منع استخدام رومات التبادل للنشر.
+                 */
+
+                if (
+                    ALLOWED_EXCHANGE_CHANNELS.includes(
+                        String(
+                            targetChannel.id
+                        )
+                    )
+                ) {
+                    delete data.autoTargets[
+                        interaction.user.id
+                    ];
+
+                    saveData();
+
+                    await interaction.update({
+                        content:
+                            [
+                                "❌ لا يمكن نشر `/auto` داخل رومات التبادل.",
+                                "",
+                                "استخدم الأمر داخل روم آخر."
+                            ].join("\n"),
+
+                        components:
+                            []
+                    });
+
+                    return;
+                }
+
+                /*
+                 * نتأكد أن المكان ما زال صالحًا.
+                 */
+
+                const botMember =
+                    interaction.guild.members.me ||
+                    await interaction.guild.members
+                        .fetch(
+                            client.user.id
+                        )
+                        .catch(
+                            () => null
+                        );
+
+                if (!botMember) {
+                    await interaction.update({
+                        content:
+                            "❌ لم أستطع التحقق من صلاحيات البوت.",
+
+                        components:
+                            []
+                    });
+
+                    return;
+                }
+
+                const permissions =
+                    targetChannel.permissionsFor(
+                        botMember
+                    );
+
+                if (
+                    !permissions ||
+                    !permissions.has(
+                        PermissionsBitField.Flags.ViewChannel
+                    ) ||
+                    !permissions.has(
+                        PermissionsBitField.Flags.SendMessages
+                    ) ||
+                    !permissions.has(
+                        PermissionsBitField.Flags.ManageWebhooks
+                    )
                 ) {
                     await interaction.update({
                         content:
-                            "❌ لا توجد رومات مفعلة في Auto Exchange.",
+                            [
+                                "❌ البوت لا يملك الصلاحيات المطلوبة في روم النشر.",
+                                "",
+                                "يحتاج:",
+                                "• View Channel",
+                                "• Send Messages",
+                                "• Manage Webhooks"
+                            ].join("\n"),
+
                         components:
                             []
                     });
@@ -3392,7 +3778,7 @@ client.on(
                     slot,
 
                     status:
-                        "waiting_channel",
+                        "waiting_content",
 
                     createdAt:
                         Date.now(),
@@ -3412,10 +3798,10 @@ client.on(
                         ),
 
                     channelId:
-                        null,
+                        targetChannel.id,
 
                     channelName:
-                        null,
+                        targetChannel.name,
 
                     lastPublishedAt:
                         null,
@@ -3432,243 +3818,26 @@ client.on(
 
                 data.posts[
                     postId
-                ] = post;
+                ] =
+                    post;
 
-                saveData();
+                /*
+                 * جلسة /auto انتهت بعد إنشاء المنشور.
+                 */
 
-                const channelMenu =
-                    createExchangeChannelMenu(
-                        interaction.guild,
-                        postId
-                    );
-
-                await interaction.update({
-                    content:
-                        [
-                            `📢 تم إنشاء المنشور رقم **${slot}**.`,
-                            "",
-                            "📍 اختر روم النشر من القائمة:",
-                            "",
-                            "بعد ذلك سيصلك DM لإرسال محتوى المنشور."
-                        ].join("\n"),
-
-                    components:
-                        channelMenu
-                            ? [
-                                channelMenu
-                            ]
-                            : []
-                });
-
-                return;
-            }
-
-            // ==================================================
-            // EXCHANGE CHANNEL
-            // ==================================================
-
-            if (
-                customId ===
-                "exchange_channel_menu"
-            ) {
-                if (
-                    !interaction.guild
-                ) {
-                    await interaction.update({
-                        content:
-                            "❌ هذا النظام يعمل داخل السيرفر فقط.",
-                        components:
-                            []
-                    });
-
-                    return;
-                }
-
-                const selected =
-                    interaction.values[0];
-
-                const parts =
-                    selected.split(
-                        ":"
-                    );
-
-                if (
-                    parts.length !==
-                    3 ||
-                    parts[0] !==
-                    "exchange_select_channel"
-                ) {
-                    await interaction.update({
-                        content:
-                            "❌ اختيار الروم غير صالح.",
-                        components:
-                            []
-                    });
-
-                    return;
-                }
-
-                const postId =
-                    parts[1];
-
-                const channelId =
-                    parts[2];
-
-                const post =
-                    data.posts[
-                        postId
-                    ];
-
-                if (!post) {
-                    await interaction.update({
-                        content:
-                            "❌ المنشور غير موجود أو انتهت صلاحيته.",
-                        components:
-                            []
-                    });
-
-                    return;
-                }
-
-                if (
-                    post.userId !==
+                delete data.autoTargets[
                     interaction.user.id
-                ) {
-                    await interaction.update({
-                        content:
-                            "❌ هذا المنشور ليس لك.",
-                        components:
-                            []
-                    });
-
-                    return;
-                }
-
-                if (
-                    post.guildId !==
-                    interaction.guild.id
-                ) {
-                    await interaction.update({
-                        content:
-                            "❌ هذا المنشور تابع لسيرفر آخر.",
-                        components:
-                            []
-                    });
-
-                    return;
-                }
-
-                if (
-                    post.status !==
-                    "waiting_channel"
-                ) {
-                    await interaction.update({
-                        content:
-                            "❌ هذا المنشور لم يعد ينتظر اختيار الروم.",
-                        components:
-                            []
-                    });
-
-                    return;
-                }
-
-                const guildData =
-                    getGuildData(
-                        interaction.guild.id
-                    );
-
-                if (
-                    !guildData.exchangeChannels.includes(
-                        channelId
-                    )
-                ) {
-                    await interaction.update({
-                        content:
-                            "❌ هذا الروم غير مفعل حاليًا.",
-                        components:
-                            []
-                    });
-
-                    return;
-                }
-
-                const channel =
-                    interaction.guild.channels.cache.get(
-                        channelId
-                    );
-
-                if (
-                    !channel ||
-                    channel.type !==
-                    ChannelType.GuildText
-                ) {
-                    await interaction.update({
-                        content:
-                            "❌ الروم غير موجود أو ليس رومًا نصيًا.",
-                        components:
-                            []
-                    });
-
-                    return;
-                }
-
-                const anotherPending =
-                    Object.values(
-                        data.posts
-                    ).some(
-                        otherPost =>
-                            otherPost &&
-                            otherPost.id !==
-                            post.id &&
-                            String(
-                                otherPost.userId
-                            ) ===
-                            String(
-                                interaction.user.id
-                            ) &&
-                            otherPost.status ===
-                            "waiting_content"
-                    );
-
-                if (
-                    anotherPending
-                ) {
-                    await interaction.update({
-                        content:
-                            [
-                                "❌ لديك منشور آخر ينتظر المحتوى في الخاص.",
-                                "",
-                                "📨 أرسل المحتوى الموجود في الخاص أولًا."
-                            ].join("\n"),
-
-                        components:
-                            []
-                    });
-
-                    return;
-                }
-
-                post.channelId =
-                    channelId;
-
-                post.channelName =
-                    channel.name;
-
-                post.status =
-                    "waiting_content";
-
-                post.updatedAt =
-                    Date.now();
+                ];
 
                 saveData();
 
                 try {
                     await interaction.user.send(
                         [
-                            "📨 تم اختيار روم النشر بنجاح!",
+                            "📨 تم تحديد مكان النشر بنجاح!",
                             "",
-                            `📢 منشور رقم **${post.slot}**`,
-                            `📍 روم النشر: <#${channelId}>`,
+                            `📢 منشور رقم **${slot}**`,
+                            `📍 روم النشر: <#${targetChannel.id}>`,
                             "",
                             "✏️ أرسل الآن محتوى المنشور هنا في الخاص.",
                             "",
@@ -3678,17 +3847,17 @@ client.on(
                             "• ملفات",
                             "• نص + صور + ملفات معًا",
                             "",
-                            "📌 سيتم النشر تلقائيًا في الروم الذي اخترته."
+                            "📌 سيتم النشر في نفس الروم الذي استخدمت فيه `/auto`."
                         ].join("\n")
                     );
 
                     await interaction.update({
                         content:
                             [
-                                "✅ تم اختيار الروم بنجاح.",
+                                "✅ تم إنشاء المنشور بنجاح.",
                                 "",
-                                `📢 منشور رقم **${post.slot}**`,
-                                `📍 الروم: <#${channelId}>`,
+                                `📢 رقم المنشور: **${slot}**`,
+                                `📍 النشر في: <#${targetChannel.id}>`,
                                 "",
                                 "📨 أرسلت لك رسالة في الخاص.",
                                 "✏️ أرسل محتوى المنشور هناك."
@@ -3698,17 +3867,9 @@ client.on(
                             []
                     });
                 } catch (_) {
-                    post.status =
-                        "waiting_channel";
-
-                    post.channelId =
-                        null;
-
-                    post.channelName =
-                        null;
-
-                    post.updatedAt =
-                        Date.now();
+                    delete data.posts[
+                        postId
+                    ];
 
                     saveData();
 
@@ -3717,7 +3878,7 @@ client.on(
                             [
                                 "❌ لم أستطع إرسال رسالة لك في الخاص.",
                                 "",
-                                "افتح الخاص مع البوت ثم حاول مرة أخرى."
+                                "افتح الخاص مع البوت ثم استخدم `/auto` مرة أخرى."
                             ].join("\n"),
 
                         components:
@@ -3742,6 +3903,7 @@ client.on(
                     await interaction.update({
                         content:
                             "❌ هذا النظام يعمل داخل السيرفر فقط.",
+
                         components:
                             []
                     });
@@ -3757,6 +3919,7 @@ client.on(
                     await interaction.update({
                         content:
                             "❌ هذا الخيار للـOwner فقط.",
+
                         components:
                             []
                     });
@@ -3777,7 +3940,9 @@ client.on(
                             [
                                 "✅ تم إعداد Auto Exchange مسبقًا.",
                                 "",
-                                "الأعضاء يستخدمون اللوحة الموجودة داخل الروم مباشرة."
+                                "الأعضاء يستخدمون اللوحة الموجودة داخل الروم مباشرة.",
+                                "",
+                                "📌 لإنشاء منشور في روم آخر استخدم `/auto` داخل الروم المطلوب."
                             ].join("\n"),
 
                         components:
@@ -3791,7 +3956,7 @@ client.on(
                     interaction.values.filter(
                         channelId =>
                             ALLOWED_EXCHANGE_CHANNELS.includes(
-                                channelId
+                                String(channelId)
                             )
                     );
 
@@ -3860,6 +4025,9 @@ client.on(
                             "",
                             "📌 اللوحة ستبقى موجودة، وإذا اختفت سيعيدها البوت تلقائيًا.",
                             "",
+                            "📢 للنشر في روم معين:",
+                            "استخدم `/auto` داخل الروم المطلوب.",
+                            "",
                             "⏱️ تغيير المدة:",
                             "`/autotime`"
                         ].join("\n"),
@@ -3885,6 +4053,7 @@ client.on(
                     await interaction.update({
                         content:
                             "❌ هذا النظام يعمل داخل السيرفر فقط.",
+
                         components:
                             []
                     });
@@ -3909,6 +4078,7 @@ client.on(
                     await interaction.update({
                         content:
                             "❌ اختيار المنشور غير صالح.",
+
                         components:
                             []
                     });
@@ -3928,6 +4098,7 @@ client.on(
                     await interaction.update({
                         content:
                             "❌ المنشور غير موجود.",
+
                         components:
                             []
                     });
@@ -3942,6 +4113,7 @@ client.on(
                     await interaction.update({
                         content:
                             "❌ هذا المنشور تابع لسيرفر آخر.",
+
                         components:
                             []
                     });
@@ -3956,6 +4128,7 @@ client.on(
                     await interaction.update({
                         content:
                             "❌ هذا المنشور ليس لك.",
+
                         components:
                             []
                     });
@@ -4011,6 +4184,7 @@ client.on(
                     await interaction.followUp({
                         content:
                             "❌ حدث خطأ أثناء تنفيذ العملية.",
+
                         ephemeral:
                             true
                     });
@@ -4018,6 +4192,7 @@ client.on(
                     await interaction.reply({
                         content:
                             "❌ حدث خطأ أثناء تنفيذ العملية.",
+
                         ephemeral:
                             true
                     });
@@ -4133,7 +4308,7 @@ client.once(
             );
 
             console.log(
-                "Slash commands registered: /setupauto, /autotime"
+                "Slash commands registered: /setupauto, /autotime, /auto"
             );
         } catch (error) {
             console.error(
